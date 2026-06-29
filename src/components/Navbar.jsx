@@ -185,20 +185,6 @@ export default function Navbar({ page, setPage }) {
           </div>
         </div>
       )}
-
-      {/* ── MOBILE BOTTOM NAV ─────────────────────────────────────── */}
-      <div className="mobile-bottom-nav">
-        {navItems.slice(0, 5).map(([id, icon, label]) => (
-          <button
-            key={id}
-            className={`mobile-bottom-nav-item ${page === id ? 'active' : ''}`}
-            onClick={() => setPage(id)}
-          >
-            <span>{icon}</span>
-            <span>{label}</span>
-          </button>
-        ))}
-      </div>
     </>
   );
 }
