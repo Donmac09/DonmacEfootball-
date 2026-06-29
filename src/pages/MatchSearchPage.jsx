@@ -79,17 +79,17 @@ export default function MatchSearchPage({ user, profile }) {
   }
 
   useEffect(() => {
-  if (!user) return;
-  loadMatches();
-  checkQueue();
-  pollRef.current = setInterval(() => {
+    if (!user) return;
+    loadMatches();
     checkQueue();
-    if (inQueueRef.current) {
-      tryMatch();
-    }
-  }, 4000);
-  return () => clearInterval(pollRef.current);
-}, [user]);
+    pollRef.current = setInterval(() => {
+      checkQueue();
+      if (inQueueRef.current) {
+        tryMatch();
+      }
+    }, 4000);
+    return () => clearInterval(pollRef.current);
+  }, [user]);
 
   useEffect(() => { inQueueRef.current = inQueue; }, [inQueue]);
 
@@ -110,184 +110,90 @@ export default function MatchSearchPage({ user, profile }) {
   }
 
   async function joinQueue() {
-  setLoading(true);
-  try {
-    // Get fresh token
-    const { data } = await sb.auth.getSession();
-    const token = data?.session?.access_token ?? SUPABASE_KEY;
-    const headers = {
-      apikey: SUPABASE_KEY,
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    };
-
-    // Leave any existing queue entry
-    await fetch(`${SUPABASE_URL}/rest/v1/matchmaking_queue?user_id=eq.${user.id}`, {
-      method: 'DELETE',
-      headers,
-    });
-
-    // Join queue
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/matchmaking_queue`, {
-      method: 'POST',
-      headers: { ...headers, Prefer: 'return=minimal' },
-      body: JSON.stringify({ user_id: user.id, status: 'waiting' }),
-    });
-
-    if (!r.ok) {
-      const text = await r.text();
-      let errMsg = 'Failed to join';
-      try { const json = JSON.parse(text); errMsg = json?.message || errMsg; } catch {}
-      throw new Error(errMsg);
+    setLoading(true);
+    try {
+      await qDel(`matchmaking_queue?user_id=eq.${user.id}`);
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/matchmaking_queue`, {
+        method: 'POST',
+        headers: await hdr({ Prefer: 'return=minimal' }),
+        body: JSON.stringify({ user_id: user.id, status: 'waiting' }),
+      });
+      if (!r.ok) {
+        const t = await r.json().catch(() => {});
+        throw new Error(t?.message || 'Failed to join');
+      }
+      setInQueue(true);
+      inQueueRef.current = true;
+      setSearching(true);
+      setMsg('🔍 Searching for an opponent...');
+      checkQueue();
+      setTimeout(tryMatch, 800);
+    } catch (e) {
+      setMsg('❌ ' + e.message);
     }
-
-    setInQueue(true);
-    inQueueRef.current = true;
-    setSearching(true);
-    setMsg('🔍 Searching for an opponent...');
-    await checkQueue();
-    setTimeout(tryMatch, 800);
-  } catch (e) {
-    setMsg('❌ ' + e.message);
-    console.error('joinQueue error:', e);
+    setLoading(false);
   }
-  setLoading(false);
-}
 
-async function leaveQueue() {
-  try {
-    const { data } = await sb.auth.getSession();
-    const token = data?.session?.access_token ?? SUPABASE_KEY;
-    await fetch(`${SUPABASE_URL}/rest/v1/matchmaking_queue?user_id=eq.${user.id}`, {
-      method: 'DELETE',
-      headers: {
-        apikey: SUPABASE_KEY,
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-    });
+  async function leaveQueue() {
+    await qDel(`matchmaking_queue?user_id=eq.${user.id}`);
     setInQueue(false);
     inQueueRef.current = false;
     setSearching(false);
     setMsg('Left the queue.');
-    await checkQueue();
-  } catch (e) {
-    console.error('leaveQueue error:', e);
+    checkQueue();
   }
-}
-
-async function checkQueue() {
-  try {
-    const { data } = await sb.auth.getSession();
-    const token = data?.session?.access_token ?? SUPABASE_KEY;
-    const headers = {
-      apikey: SUPABASE_KEY,
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    };
-
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/matchmaking_queue?status=eq.waiting&select=id`, { headers });
-    const data2 = await r.json().catch(() => []);
-    setQueueCount(Array.isArray(data2) ? data2.length : 0);
-
-    if (user) {
-      const mine = await fetch(`${SUPABASE_URL}/rest/v1/matchmaking_queue?user_id=eq.${user.id}&status=eq.waiting&select=id&limit=1`, { headers });
-      const mineData = await mine.json().catch(() => []);
-      const amIn = Array.isArray(mineData) && mineData.length > 0;
-      setInQueue(amIn);
-      inQueueRef.current = amIn;
-      if (amIn) setSearching(true);
-    }
-  } catch (e) {
-    console.error('checkQueue error:', e);
-  }
-}
 
   async function tryMatch() {
-  if (matchingRef.current) return;
-  matchingRef.current = true;
-  try {
-    const { data } = await sb.auth.getSession();
-    const token = data?.session?.access_token ?? SUPABASE_KEY;
-    const headers = {
-      apikey: SUPABASE_KEY,
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    };
+    if (matchingRef.current) return;
+    matchingRef.current = true;
+    try {
+      const mine = await qGet(`matchmaking_queue?user_id=eq.${user.id}&status=eq.waiting&select=id&limit=1`);
+      if (!Array.isArray(mine) || mine.length === 0) {
+        setInQueue(false);
+        inQueueRef.current = false;
+        setSearching(false);
+        return;
+      }
 
-    const mine = await fetch(`${SUPABASE_URL}/rest/v1/matchmaking_queue?user_id=eq.${user.id}&status=eq.waiting&select=id&limit=1`, { headers });
-    const mineData = await mine.json().catch(() => []);
-    if (!Array.isArray(mineData) || mineData.length === 0) {
-      setInQueue(false);
-      inQueueRef.current = false;
-      setSearching(false);
-      return;
-    }
+      const others = await qGet(`matchmaking_queue?status=eq.waiting&user_id=neq.${user.id}&select=id,user_id,users(username)&order=created_at.asc&limit=1`);
+      if (!Array.isArray(others) || others.length === 0) return;
 
-    const others = await fetch(`${SUPABASE_URL}/rest/v1/matchmaking_queue?status=eq.waiting&user_id=neq.${user.id}&select=id,user_id,users(username)&order=created_at.asc&limit=1`, { headers });
-    const othersData = await others.json().catch(() => []);
-    if (!Array.isArray(othersData) || othersData.length === 0) return;
+      const opp = others[0];
+      const cl1 = await qPatch(`matchmaking_queue?id=eq.${opp.id}&status=eq.waiting`, { status: 'matched' });
+      if (!Array.isArray(cl1) || cl1.length === 0) return;
 
-    const opp = othersData[0];
+      const cl2 = await qPatch(`matchmaking_queue?user_id=eq.${user.id}&status=eq.waiting`, { status: 'matched' });
+      if (!Array.isArray(cl2) || cl2.length === 0) {
+        await qPatch(`matchmaking_queue?id=eq.${opp.id}`, { status: 'waiting' });
+        return;
+      }
 
-    // Try to match
-    const cl1 = await fetch(`${SUPABASE_URL}/rest/v1/matchmaking_queue?id=eq.${opp.id}&status=eq.waiting`, {
-      method: 'PATCH',
-      headers: { ...headers, Prefer: 'return=representation' },
-      body: JSON.stringify({ status: 'matched' }),
-    });
-    const cl1Data = await cl1.json().catch(() => []);
-    if (!Array.isArray(cl1Data) || cl1Data.length === 0) return;
-
-    const cl2 = await fetch(`${SUPABASE_URL}/rest/v1/matchmaking_queue?user_id=eq.${user.id}&status=eq.waiting`, {
-      method: 'PATCH',
-      headers: { ...headers, Prefer: 'return=representation' },
-      body: JSON.stringify({ status: 'matched' }),
-    });
-    const cl2Data = await cl2.json().catch(() => []);
-    if (!Array.isArray(cl2Data) || cl2Data.length === 0) {
-      await fetch(`${SUPABASE_URL}/rest/v1/matchmaking_queue?id=eq.${opp.id}`, {
-        method: 'PATCH',
-        headers: { ...headers, Prefer: 'return=minimal' },
-        body: JSON.stringify({ status: 'waiting' }),
-      });
-      return;
-    }
-
-    // Create match
-    await fetch(`${SUPABASE_URL}/rest/v1/free_play_matches`, {
-      method: 'POST',
-      headers: { ...headers, Prefer: 'return=minimal' },
-      body: JSON.stringify({
+      await qPost('free_play_matches', {
         player1_id: user.id,
         player2_id: opp.user_id,
-        status: 'accepted'
-      }),
-    });
+        status: 'accepted',
+      });
 
-    const oppName = opp.users?.username || 'a player';
-    await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-      method: 'POST',
-      headers: { ...headers, Prefer: 'return=minimal' },
-      body: JSON.stringify([
+      const oppName = opp.users?.username || 'a player';
+      await qPost('notifications', [
         { user_id: user.id, type: 'challenge', read: false, message: `✅ Matched with ${oppName}! Play then submit result.` },
         { user_id: opp.user_id, type: 'challenge', read: false, message: `✅ Matched with ${profile?.username || 'a player'}! Play then submit result.` },
-      ]),
-    }).catch(() => {});
+      ]).catch(() => {});
 
-    setSearching(false);
-    setInQueue(false);
-    inQueueRef.current = false;
-    setMsg(`✅ Matched with ${oppName}! Play, then submit your result below.`);
-    loadMatches();
-    checkQueue();
-  } catch (e) {
-    console.error('tryMatch error', e);
-  } finally {
-    matchingRef.current = false;
+      setSearching(false);
+      setInQueue(false);
+      inQueueRef.current = false;
+      setMsg(`✅ Matched with ${oppName}! Play, then submit your result below.`);
+      loadMatches();
+      checkQueue();
+    } catch (e) {
+      console.error('tryMatch error', e);
+    } finally {
+      matchingRef.current = false;
+    }
   }
-}
-    async function submitResult() {
+
+  async function submitResult() {
     if (!screenshot) { setMsg('Screenshot is required'); return; }
     setSubmitting(true);
     const ext = screenshot.name.split('.').pop();
@@ -295,22 +201,43 @@ async function checkQueue() {
     let screenshotUrl = null;
     const token = await getToken();
     try {
-      const up = await fetch(`${SUPABASE_URL}/storage/v1/object/screenshots/${fname}`, { method:'POST', headers:{ apikey: SUPABASE_KEY, Authorization:`Bearer ${token}`, 'Content-Type': screenshot.type }, body: screenshot });
+      const up = await fetch(`${SUPABASE_URL}/storage/v1/object/screenshots/${fname}`, {
+        method: 'POST',
+        headers: {
+          apikey: SUPABASE_KEY,
+          Authorization: `Bearer ${token}`,
+          'Content-Type': screenshot.type,
+        },
+        body: screenshot,
+      });
       if (up.ok) screenshotUrl = `${SUPABASE_URL}/storage/v1/object/public/screenshots/${fname}`;
-    } catch(e) {}
-    const r = await qPatch(`free_play_matches?id=eq.${submitModal.id}`, { player1_score: scoreHome, player2_score: scoreAway, status:'pending_review', submitted_by: user.id, screenshot_url: screenshotUrl });
-    setMsg(Array.isArray(r)&&r.length>0?'✅ Result submitted! Awaiting admin review.':'Error submitting');
-    setSubmitModal(null); loadMatches(); setSubmitting(false);
+    } catch (e) {}
+    const r = await qPatch(`free_play_matches?id=eq.${submitModal.id}`, {
+      player1_score: scoreHome,
+      player2_score: scoreAway,
+      status: 'pending_review',
+      submitted_by: user.id,
+      screenshot_url: screenshotUrl,
+    });
+    setMsg(Array.isArray(r) && r.length > 0 ? '✅ Result submitted! Awaiting admin review.' : 'Error submitting');
+    setSubmitModal(null);
+    loadMatches();
+    setSubmitting(false);
   }
 
-  const statusBadge = s => ({ pending:['Pending','badge-gray'], accepted:['🎮 Play Now!','badge-warn'], pending_review:['Under Review','badge-blue'], approved:['✓ Approved','badge-green'], rejected:['✗ Rejected','badge-red'] }[s]||[s,'badge-gray']);
+  const statusBadge = s => ({
+    pending: ['Pending', 'badge-gray'],
+    accepted: ['🎮 Play Now!', 'badge-warn'],
+    pending_review: ['Under Review', 'badge-blue'],
+    approved: ['✓ Approved', 'badge-green'],
+    rejected: ['✗ Rejected', 'badge-red'],
+  }[s] || [s, 'badge-gray']);
 
   return (
     <div>
       <h2 className="section-title gradient-text">⚽ Match Search</h2>
       {msg && <div className={`alert ${msg.startsWith('✅')?'alert-success':msg.startsWith('❌')?'alert-danger':'alert-info'}`} style={{ marginBottom:'1rem' }}>{msg} <button onClick={()=>setMsg('')} style={{ float:'right', background:'none', border:'none', cursor:'pointer', color:'inherit' }}>✕</button></div>}
 
-      {/* Queue Card */}
       <div className={`queue-card ${searching?'searching':''}`} style={{ marginBottom:'1.5rem' }}>
         <div style={{ fontSize:'3rem', marginBottom:'.75rem' }}>{searching?'🔍':'⚽'}</div>
         <h3 style={{ fontWeight:800, fontSize:'1.3rem', marginBottom:'.5rem', color:searching?'var(--yellow)':'var(--text)' }}>{searching?'Searching for opponent...':'Find a Random Opponent'}</h3>
@@ -334,7 +261,6 @@ async function checkQueue() {
             </div>}
       </div>
 
-      {/* My Matches */}
       <div className="card" style={{ marginBottom:'1.5rem' }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'1rem' }}>
           <span style={{ fontWeight:700 }}>📋 My Matches</span>
@@ -358,13 +284,11 @@ async function checkQueue() {
             })}
       </div>
 
-      {/* Leaderboard */}
       <div className="card">
         <div style={{ fontWeight:700, marginBottom:'1rem' }}>🏆 Free Play Leaderboard</div>
         <Leaderboard />
       </div>
 
-      {/* Submit Modal */}
       {submitModal && (
         <div className="modal-overlay">
           <div className="modal">
@@ -377,7 +301,8 @@ async function checkQueue() {
             <div className="form-group"><label className="form-label">📸 Screenshot Evidence (Required)</label><input type="file" accept="image/*" onChange={e=>setScreenshot(e.target.files[0])} /></div>
             <div style={{ display:'flex', gap:8, marginTop:'1rem' }}>
               <button className="btn btn-primary" onClick={submitResult} disabled={submitting}>{submitting?'Submitting...':'📤 Submit'}</button>
-              <button className="btn btn-secondary" onClick={tryMatch}>⚡ Try Now</button>
+              <button className="btn btn-secondary" onClick={()=>setSubmitModal(null)}>Cancel</button>
+            </div>
           </div>
         </div>
       )}
