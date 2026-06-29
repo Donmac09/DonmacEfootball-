@@ -115,12 +115,6 @@ export default function Navbar({ page, setPage }) {
               {icon} {label}
             </button>
           ))}
-          <button
-            className="sidebar-link"
-            onClick={() => { setPage('profile'); setMenuOpen(false); }}
-          >
-            👤 Profile
-          </button>
         </nav>
       </div>
 
