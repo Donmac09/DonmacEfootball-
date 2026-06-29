@@ -76,7 +76,21 @@ export default function Navbar({ page, setPage }) {
         >
           ⚽ DONMAC
         </div>
-        <div style={{ width: 40 }}></div>
+        <div className="mobile-header-right">
+          <div
+            className="mobile-bell"
+            onClick={() => { setShowNotifs(v => !v); if (!showNotifs) loadNotifs(); }}
+          >
+            🔔
+            {notifCount > 0 && <span className="mobile-bell-dot" />}
+          </div>
+          <div
+            className="mobile-avatar"
+            onClick={() => setPage('profile')}
+          >
+            {(profile?.username || user?.email || 'U').charAt(0).toUpperCase()}
+          </div>
+        </div>
       </div>
 
       {/* ── SIDEBAR MENU ──────────────────────────────────────────── */}
