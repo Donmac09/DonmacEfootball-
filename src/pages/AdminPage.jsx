@@ -1,6 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { apiFetch, SUPABASE_URL, SUPABASE_KEY } from '../services/supabase';
 import React, { useState, useEffect, useCallback } from 'react';
+import { apiFetch, SUPABASE_URL, SUPABASE_KEY } from '../services/supabase';
 
 const SECTIONS = [
   ['dashboard',     '📊 Dashboard'],
