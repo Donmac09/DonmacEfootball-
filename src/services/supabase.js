@@ -5,40 +5,33 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 
 export { SUPABASE_URL, SUPABASE_KEY };
 
-// In-memory storage — avoids Edge Tracking Prevention blocking localStorage from file://
-const memoryStorage = (() => {
-  const s = {};
-  return {
-    getItem:    (k) => s[k] ?? null,
-    setItem:    (k, v) => { s[k] = v; },
-    removeItem: (k) => { delete s[k]; },
-    clear:      () => { Object.keys(s).forEach((k) => delete s[k]); },
-  };
-})();
-
 export const sb = createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: {
-    storage:            memoryStorage,
-    autoRefreshToken:   false,
-    persistSession:     false,
-    detectSessionInUrl: false,
-    flowType:           'implicit',
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+    flowType: 'implicit',
+    storage: localStorage,
   },
 });
 
-// ── In-memory session store ─────────────────────────────────────────────────
-// We keep the token here and inject it into every REST call manually,
-// because the Supabase JS client cannot persist it from file://
-export const sessionStore = { session: null };
+export const sessionStore = { 
+  get session() { 
+    return sb.auth.session(); 
+  },
+  set session(val) { 
+    // no-op - Supabase manages this
+  }
+};
 
-// ── Authenticated REST fetch ────────────────────────────────────────────────
 export async function apiFetch(method, path, body, extraHeaders = {}) {
-  const token = sessionStore.session?.access_token ?? SUPABASE_KEY;
-  const url   = `${SUPABASE_URL}/rest/v1/${path}`;
-  const res   = await fetch(url, {
+  const session = await sb.auth.getSession();
+  const token = session?.data?.session?.access_token ?? SUPABASE_KEY;
+  const url = `${SUPABASE_URL}/rest/v1/${path}`;
+  const res = await fetch(url, {
     method,
     headers: {
-      apikey:        SUPABASE_KEY,
+      apikey: SUPABASE_KEY,
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
       ...extraHeaders,
