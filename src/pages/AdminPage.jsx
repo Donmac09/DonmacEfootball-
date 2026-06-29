@@ -56,32 +56,33 @@ export default function AdminPage({ user, profile }) {
   const [ppSearch, setPpSearch]   = useState('');
 
   async function rFetch(method, path, body, ex = {}) {
-  try {
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
-      method,
-      headers: {
-        apikey: SUPABASE_KEY,
-        Authorization: `Bearer ${SUPABASE_KEY}`,
-        'Content-Type': 'application/json',
-        ...ex,
-      },
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    });
-    
-    let d = null;
-    const text = await r.text();
-    try { d = JSON.parse(text); } catch { d = text; }
-    
-    if (!r.ok) {
-      console.error(`rFetch error ${r.status} on ${path}:`, d);
+    try {
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+        method,
+        headers: {
+          apikey: SUPABASE_KEY,
+          Authorization: `Bearer ${SUPABASE_KEY}`,
+          'Content-Type': 'application/json',
+          ...ex,
+        },
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+      });
+      
+      let d = null;
+      const text = await r.text();
+      try { d = JSON.parse(text); } catch { d = text; }
+      
+      if (!r.ok) {
+        console.error(`rFetch error ${r.status} on ${path}:`, d);
+      }
+      
+      return { ok: r.ok, status: r.status, data: d };
+    } catch (error) {
+      console.error('rFetch exception:', error);
+      return { ok: false, status: 500, data: null, error: error.message };
     }
-    
-    return { ok: r.ok, status: r.status, data: d };
-  } catch (error) {
-    console.error('rFetch exception:', error);
-    return { ok: false, status: 500, data: null, error: error.message };
   }
-}
+
   async function logAction(action, details = {}) {
     await rFetch('POST', 'admin_logs',
       { admin_id: user.id, action, details },
@@ -96,68 +97,67 @@ export default function AdminPage({ user, profile }) {
 
   useEffect(() => {
     if (profile?.role === 'admin') loadAll();
-  }, [profile]); // eslint-disable-line
+  }, [profile]);
 
-  // Replace the loadAll function (around line 60-90)
-async function loadAll() {
-  try {
-    const [l, t, c, e, u, lb, pf, pcf, pef, pfp] = await Promise.all([
-      apiFetch('GET', 'leagues?select=*&order=country'),
-      apiFetch('GET', 'teams?select=*,leagues(name,country)&order=total_points.desc'),
-      apiFetch('GET', 'cups?select=*,leagues(name,country)'),
-      apiFetch('GET', 'european_competitions?select=*'),
-      apiFetch('GET', 'users?select=id,username,email,role,is_blocked,created_at&order=created_at.desc'),
-      apiFetch('GET', 'free_play_leaderboard?select=*,users!inner(id,username,email)&order=points.desc'),
-      apiFetch('GET', 'fixtures?status=eq.pending_review&select=*,home:home_team_id(name),away:away_team_id(name),leagues(name)&order=created_at'),
-      apiFetch('GET', 'cup_fixtures?status=eq.pending_review&select=*,home:home_team_id(name),away:away_team_id(name),cups(name)&order=created_at'),
-      apiFetch('GET', 'european_fixtures?status=eq.pending_review&select=*,home:home_team_id(name),away:away_team_id(name),european_competitions(name)&order=created_at'),
-      apiFetch('GET', 'free_play_matches?status=eq.pending_review&select=*,p1:player1_id(username),p2:player2_id(username)&order=created_at'),
-    ]);
+  async function loadAll() {
+    try {
+      const [l, t, c, e, u, lb, pf, pcf, pef, pfp] = await Promise.all([
+        apiFetch('GET', 'leagues?select=*&order=country'),
+        apiFetch('GET', 'teams?select=*&order=total_points.desc'),
+        apiFetch('GET', 'cups?select=*'),
+        apiFetch('GET', 'european_competitions?select=*'),
+        apiFetch('GET', 'users?select=id,username,email,role,is_blocked,created_at&order=created_at.desc'),
+        apiFetch('GET', 'free_play_leaderboard?select=*&order=points.desc'),
+        apiFetch('GET', 'fixtures?status=eq.pending_review&select=*,home:home_team_id(name),away:away_team_id(name),leagues(name)&order=created_at'),
+        apiFetch('GET', 'cup_fixtures?status=eq.pending_review&select=*,home:home_team_id(name),away:away_team_id(name),cups(name)&order=created_at'),
+        apiFetch('GET', 'european_fixtures?status=eq.pending_review&select=*,home:home_team_id(name),away:away_team_id(name),european_competitions(name)&order=created_at'),
+        apiFetch('GET', 'free_play_matches?status=eq.pending_review&select=*,p1:player1_id(username),p2:player2_id(username)&order=created_at'),
+      ]);
 
-    setLeagues(Array.isArray(l.data) ? l.data : []);
-    setTeams(Array.isArray(t.data) ? t.data : []);
-    setCups(Array.isArray(c.data) ? c.data : []);
-    setEuroComps(Array.isArray(e.data) ? e.data : []);
-    setUsers(Array.isArray(u.data) ? u.data : []);
-    
-    // Deduplicate leaderboard
-    const lbData = Array.isArray(lb.data) ? lb.data : [];
-    const seen = new Set();
-    const dedupedLb = lbData.filter(item => {
-      if (seen.has(item.user_id)) return false;
-      seen.add(item.user_id);
-      return true;
-    });
-    setLeaderboard(dedupedLb);
+      setLeagues(Array.isArray(l.data) ? l.data : []);
+      setTeams(Array.isArray(t.data) ? t.data : []);
+      setCups(Array.isArray(c.data) ? c.data : []);
+      setEuroComps(Array.isArray(e.data) ? e.data : []);
+      setUsers(Array.isArray(u.data) ? u.data : []);
+      
+      const lbData = Array.isArray(lb.data) ? lb.data : [];
+      const seen = new Set();
+      const dedupedLb = lbData.filter(item => {
+        if (seen.has(item.user_id)) return false;
+        seen.add(item.user_id);
+        return true;
+      });
+      setLeaderboard(dedupedLb);
 
-    const allPending = [
-      ...(Array.isArray(pf.data) ? pf.data : []).map(f => ({
-        ...f, _type: 'league',
-        _label: `${f.home?.name || '?'} vs ${f.away?.name || '?'} — ${f.leagues?.name || ''}`,
-        _score: `${f.home_score ?? '?'} – ${f.away_score ?? '?'}`,
-      })),
-      ...(Array.isArray(pcf.data) ? pcf.data : []).map(f => ({
-        ...f, _type: 'cup',
-        _label: `${f.home?.name || '?'} vs ${f.away?.name || '?'} — ${f.cups?.name || ''}`,
-        _score: `${f.home_score ?? '?'} – ${f.away_score ?? '?'}`,
-      })),
-      ...(Array.isArray(pef.data) ? pef.data : []).map(f => ({
-        ...f, _type: 'european',
-        _label: `${f.home?.name || '?'} vs ${f.away?.name || '?'} — ${f.european_competitions?.name || ''}`,
-        _score: `${f.home_score ?? '?'} – ${f.away_score ?? '?'}`,
-      })),
-      ...(Array.isArray(pfp.data) ? pfp.data : []).map(f => ({
-        ...f, _type: 'freeplay',
-        _label: `${f.p1?.username || '?'} vs ${f.p2?.username || '?'} (Free Play)`,
-        _score: `${f.player1_score ?? '?'} – ${f.player2_score ?? '?'}`,
-      })),
-    ];
-    setPending(allPending);
-  } catch (error) {
-    console.error('loadAll error:', error);
-    showMsg('Error loading admin data: ' + error.message, 'danger');
+      const allPending = [
+        ...(Array.isArray(pf.data) ? pf.data : []).map(f => ({
+          ...f, _type: 'league',
+          _label: `${f.home?.name || '?'} vs ${f.away?.name || '?'} — ${f.leagues?.name || ''}`,
+          _score: `${f.home_score ?? '?'} – ${f.away_score ?? '?'}`,
+        })),
+        ...(Array.isArray(pcf.data) ? pcf.data : []).map(f => ({
+          ...f, _type: 'cup',
+          _label: `${f.home?.name || '?'} vs ${f.away?.name || '?'} — ${f.cups?.name || ''}`,
+          _score: `${f.home_score ?? '?'} – ${f.away_score ?? '?'}`,
+        })),
+        ...(Array.isArray(pef.data) ? pef.data : []).map(f => ({
+          ...f, _type: 'european',
+          _label: `${f.home?.name || '?'} vs ${f.away?.name || '?'} — ${f.european_competitions?.name || ''}`,
+          _score: `${f.home_score ?? '?'} – ${f.away_score ?? '?'}`,
+        })),
+        ...(Array.isArray(pfp.data) ? pfp.data : []).map(f => ({
+          ...f, _type: 'freeplay',
+          _label: `${f.p1?.username || '?'} vs ${f.p2?.username || '?'} (Free Play)`,
+          _score: `${f.player1_score ?? '?'} – ${f.player2_score ?? '?'}`,
+        })),
+      ];
+      setPending(allPending);
+    } catch (error) {
+      console.error('loadAll error:', error);
+      showMsg('Error loading admin data: ' + error.message, 'danger');
+    }
   }
-}
+
   async function loadPointsHistory() {
     const r = await apiFetch('GET',
       'player_points_history?select=*,admin:admin_id(username),player:player_id(username)&order=created_at.desc&limit=100'
@@ -165,7 +165,6 @@ async function loadAll() {
     setPointsHistory(Array.isArray(r.data) ? r.data : []);
   }
 
-  // ── Approve / Reject result ─────────────────────────────────────────────
   async function approveResult(item, approve) {
     const table = {
       league:   'fixtures',
@@ -238,7 +237,6 @@ async function loadAll() {
     loadAll();
   }
 
-  // ── Adjust player (matchmaking) points ──────────────────────────────────
   async function adjustPlayerPoints() {
     if (!ppPlayer) { showMsg('Select a player', 'danger'); return; }
     const change = parseInt(ppChange || 0);
@@ -251,7 +249,6 @@ async function loadAll() {
     const before = lb.points || 0;
     const after  = Math.max(0, before + change);
 
-    // Upsert leaderboard row
     if (Array.isArray(lbR.data) && lbR.data[0]) {
       await rFetch('PATCH', `free_play_leaderboard?user_id=eq.${ppPlayer}`,
         { points: after }, { Prefer: 'return=minimal' });
@@ -261,7 +258,6 @@ async function loadAll() {
         { Prefer: 'return=minimal' });
     }
 
-    // Save audit trail
     await rFetch('POST', 'player_points_history', {
       admin_id: user.id,
       player_id: ppPlayer,
@@ -277,7 +273,6 @@ async function loadAll() {
     loadAll(); loadPointsHistory();
   }
 
-  // ── Generate league fixtures ────────────────────────────────────────────
   async function generateFixtures() {
     if (!genLeague) { showMsg('Select a league', 'danger'); return; }
     const r = await apiFetch('GET', `teams?league_id=eq.${genLeague}&is_active=eq.true&select=id`);
@@ -383,23 +378,19 @@ async function loadAll() {
   );
 
   const filteredLb = leaderboard.filter(r =>
-  !ppSearch ||
-  (r.users?.username || '').toLowerCase().includes(ppSearch.toLowerCase())
-);
-// Add deduplication when rendering options
-const uniqueFilteredLb = filteredLb.filter((r, index, self) => 
-  index === self.findIndex(t => t.user_id === r.user_id)
-);
+    !ppSearch ||
+    (r.users?.username || '').toLowerCase().includes(ppSearch.toLowerCase())
+  );
+  const uniqueFilteredLb = filteredLb.filter((r, index, self) => 
+    index === self.findIndex(t => t.user_id === r.user_id)
+  );
 
-  // ── RENDER ────────────────────────────────────────────────────────────────
   return (
     <div>
-      {/* Header */}
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'1rem', flexWrap:'wrap', gap:8 }}>
         <h2 className="section-title gradient-text" style={{ margin:0 }}>⚙️ Admin Panel</h2>
         <div style={{ display:'flex', gap:8, alignItems:'center' }}>
           <span className="badge badge-gold">👑 Admin</span>
-          {/* Mobile sidebar toggle */}
           <button className="btn btn-secondary btn-sm admin-sidebar-toggle"
             onClick={() => setSidebarOpen(v => !v)}>
             {sidebarOpen ? '✕ Close' : '☰ Menu'}
@@ -407,7 +398,6 @@ const uniqueFilteredLb = filteredLb.filter((r, index, self) =>
         </div>
       </div>
 
-      {/* Message */}
       {msg && (
         <div className={`alert alert-${msgType === 'success' ? 'success' : msgType === 'danger' ? 'danger' : 'info'}`} style={{ marginBottom:'1rem', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
           <span>{msg}</span>
@@ -416,7 +406,6 @@ const uniqueFilteredLb = filteredLb.filter((r, index, self) =>
       )}
 
       <div className="admin-layout">
-        {/* Sidebar */}
         <div className={`admin-sidebar ${sidebarOpen ? 'admin-sidebar-open' : ''}`}>
           {SECTIONS.map(([id, label]) => (
             <button key={id}
@@ -436,10 +425,7 @@ const uniqueFilteredLb = filteredLb.filter((r, index, self) =>
           ))}
         </div>
 
-        {/* Content */}
         <div className="admin-content">
-
-          {/* ── DASHBOARD ────────────────────────────────────────────── */}
           {section === 'dashboard' && (
             <div>
               <div className="grid-4" style={{ marginBottom:'1.5rem' }}>
@@ -462,7 +448,6 @@ const uniqueFilteredLb = filteredLb.filter((r, index, self) =>
             </div>
           )}
 
-          {/* ── PENDING RESULTS ──────────────────────────────────────── */}
           {section === 'results' && (
             <div>
               <div style={{ fontWeight:700, fontSize:'1.1rem', marginBottom:'1rem' }}>
@@ -503,10 +488,8 @@ const uniqueFilteredLb = filteredLb.filter((r, index, self) =>
             </div>
           )}
 
-          {/* ── PLAYER POINTS (MATCHMAKING) ───────────────────────────── */}
           {section === 'playerpoints' && (
             <div>
-              {/* Add / Deduct form */}
               <div className="card" style={{ marginBottom:'1rem' }}>
                 <div style={{ fontWeight:700, fontSize:'1rem', marginBottom:'1rem', color:'var(--yellow)' }}>
                   🎮 Add / Deduct Player Points (Free Play / Matchmaking)
@@ -520,13 +503,13 @@ const uniqueFilteredLb = filteredLb.filter((r, index, self) =>
                     <label className="form-label">Search & Select Player</label>
                     <input className="form-input" placeholder="Type to search player..." value={ppSearch} onChange={e => setPpSearch(e.target.value)} style={{ marginBottom:8 }} />
                     <select className="form-select" value={ppPlayer} onChange={e => setPpPlayer(e.target.value)} size={Math.min(6, uniqueFilteredLb.length + 1)} style={{ height:'auto', minHeight:44 }}>
-  <option value="">-- Select a player --</option>
-  {uniqueFilteredLb.map(r => (
-    <option key={r.user_id} value={r.user_id}>
-      {r.users?.username || r.users?.email || r.user_id} — {r.points || 0} pts ({r.wins||0}W {r.draws||0}D {r.losses||0}L)
-    </option>
-  ))}
-</select>
+                      <option value="">-- Select a player --</option>
+                      {uniqueFilteredLb.map(r => (
+                        <option key={r.user_id} value={r.user_id}>
+                          {r.users?.username || r.users?.email || r.user_id} — {r.points || 0} pts ({r.wins||0}W {r.draws||0}D {r.losses||0}L)
+                        </option>
+                      ))}
+                    </select>
                   </div>
 
                   <div className="form-group">
@@ -550,7 +533,6 @@ const uniqueFilteredLb = filteredLb.filter((r, index, self) =>
                   </div>
                 </div>
 
-                {/* Preview */}
                 {ppPlayer && ppChange !== 0 && (() => {
                   const row = leaderboard.find(r => r.user_id === ppPlayer);
                   const before = row?.points || 0;
@@ -569,7 +551,6 @@ const uniqueFilteredLb = filteredLb.filter((r, index, self) =>
                 </button>
               </div>
 
-              {/* Current Leaderboard */}
               <div className="card" style={{ marginBottom:'1rem' }}>
                 <div style={{ fontWeight:700, marginBottom:'1rem' }}>🏆 Current Leaderboard</div>
                 <div className="table-wrap">
@@ -581,9 +562,9 @@ const uniqueFilteredLb = filteredLb.filter((r, index, self) =>
                     </thead>
                     <tbody>
                       {leaderboard.length === 0
-  ? <tr><td colSpan={11} style={{ textAlign:'center', color:'var(--muted)', padding:'2rem' }}>No players yet</td></tr>
-  : leaderboard.map((r, i) => (
-    <tr key={r.user_id} style={{ background: ppPlayer === r.user_id ? 'rgba(255,210,0,0.06)' : 'transparent' }}>
+                        ? <tr><td colSpan={11} style={{ textAlign:'center', color:'var(--muted)', padding:'2rem' }}>No players yet</td></tr>
+                        : leaderboard.map((r, i) => (
+                          <tr key={r.user_id} style={{ background: ppPlayer === r.user_id ? 'rgba(255,210,0,0.06)' : 'transparent' }}>
                             <td className={`pos ${i===0?'pos-1':i===1?'pos-2':i===2?'pos-3':''}`}>{i+1}</td>
                             <td style={{ fontWeight:600 }}>{r.users?.username || '—'}</td>
                             <td>{r.matches_played||0}</td>
@@ -607,7 +588,6 @@ const uniqueFilteredLb = filteredLb.filter((r, index, self) =>
                 </div>
               </div>
 
-              {/* Points History */}
               <div className="card">
                 <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'1rem', flexWrap:'wrap', gap:8 }}>
                   <div style={{ fontWeight:700 }}>📋 Points Adjustment History</div>
@@ -641,7 +621,6 @@ const uniqueFilteredLb = filteredLb.filter((r, index, self) =>
             </div>
           )}
 
-          {/* ── LEAGUES ──────────────────────────────────────────────── */}
           {section === 'leagues' && (
             <div>
               <div className="card" style={{ marginBottom:'1rem' }}>
@@ -679,7 +658,6 @@ const uniqueFilteredLb = filteredLb.filter((r, index, self) =>
             </div>
           )}
 
-          {/* ── FIXTURES ─────────────────────────────────────────────── */}
           {section === 'fixtures' && (
             <div>
               <div className="card" style={{ marginBottom:'1rem' }}>
@@ -705,7 +683,6 @@ const uniqueFilteredLb = filteredLb.filter((r, index, self) =>
             </div>
           )}
 
-          {/* ── CUPS ─────────────────────────────────────────────────── */}
           {section === 'cups' && (
             <div>
               <div className="card" style={{ marginBottom:'1rem' }}>
@@ -734,7 +711,6 @@ const uniqueFilteredLb = filteredLb.filter((r, index, self) =>
             </div>
           )}
 
-          {/* ── EUROPEAN ─────────────────────────────────────────────── */}
           {section === 'european' && (
             <div>
               <div className="card" style={{ marginBottom:'1rem' }}>
@@ -771,7 +747,6 @@ const uniqueFilteredLb = filteredLb.filter((r, index, self) =>
             </div>
           )}
 
-          {/* ── TEAM POINTS ───────────────────────────────────────────── */}
           {section === 'points' && (
             <div className="card">
               <div style={{ fontWeight:700, marginBottom:'1rem' }}>✏️ Add / Deduct Team Points (Leagues)</div>
@@ -796,7 +771,6 @@ const uniqueFilteredLb = filteredLb.filter((r, index, self) =>
             </div>
           )}
 
-          {/* ── RELEGATION ────────────────────────────────────────────── */}
           {section === 'relegation' && (
             <div>
               <div className="card">
@@ -831,152 +805,146 @@ const uniqueFilteredLb = filteredLb.filter((r, index, self) =>
               </div>
             </div>
           )}
-          {/* ── USERS ─────────────────────────────────────────────────── */}
-{section === 'users' && (
-  <div className="card">
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: 8 }}>
-      <div style={{ fontWeight: 700 }}>👥 Users ({users.length})</div>
-      <input className="form-input" placeholder="Search..." value={userSearch} onChange={e => setUserSearch(e.target.value)} style={{ width: 200 }} />
-    </div>
-    <div className="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            {['Username', 'Team Name', 'Email', 'Phone', 'Role', 'Status', 'League', 'Actions'].map(h => <th key={h}>{h}</th>)}
-          </tr>
-        </thead>
-        <tbody>
-          {filteredUsers.map(u => {
-            // Get user's team
-            const userTeam = teams.find(t => t.user_id === u.id);
-            
-            return (
-              <tr key={u.id}>
-                <td style={{ fontWeight: 600 }}>{u.username || '—'}</td>
-                <td>
-                  <input
-                    className="form-input"
-                    style={{ padding: '4px 8px', fontSize: '.78rem', minHeight: 'auto', width: '100%', maxWidth: '150px' }}
-                    value={userTeam?.name || ''}
-                    placeholder="Team name"
-                    onBlur={async (e) => {
-                      const newName = e.target.value.trim();
-                      if (!newName) return;
-                      try {
-                        if (userTeam) {
-                          await rFetch('PATCH', `teams?id=eq.${userTeam.id}`, { name: newName }, { Prefer: 'return=minimal' });
-                          showMsg(`✅ Team name updated to "${newName}"`, 'success');
-                          loadAll();
-                        } else {
-                          await rFetch('POST', 'teams', {
-                            user_id: u.id,
-                            name: newName,
-                            league_id: null,
-                            total_points: 0,
-                            wins: 0,
-                            draws: 0,
-                            losses: 0,
-                            matches_played: 0,
-                            goals_for: 0,
-                            goals_against: 0,
-                            goal_difference: 0,
-                            is_active: true
-                          }, { Prefer: 'return=minimal' });
-                          showMsg(`✅ Team "${newName}" created for ${u.username}`, 'success');
-                          loadAll();
-                        }
-                      } catch (err) {
-                        showMsg('❌ Error updating team: ' + err.message, 'danger');
-                      }
-                    }}
-                    onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
-                  />
-                </td>
-                <td className="text-muted text-sm">{u.email || '—'}</td>
-                <td className="text-muted text-sm">{u.phone || 'Not set'}</td>
-                <td>
-                  <span className={`badge ${u.role === 'admin' ? 'badge-gold' : 'badge-gray'}`}>
-                    {u.role || 'player'}
-                  </span>
-                </td>
-                <td>
-                  <span className={`badge ${u.is_blocked ? 'badge-red' : 'badge-green'}`}>
-                    {u.is_blocked ? 'Blocked' : 'Active'}
-                  </span>
-                </td>
-                <td>
-                  <select 
-                    className="form-select" 
-                    style={{ padding: '4px 8px', fontSize: '.78rem', minHeight: 'auto', width: '100%', maxWidth: '140px' }}
-                    value={userTeam?.league_id || ''}
-                    onChange={async (e) => {
-                      const leagueId = e.target.value || null;
-                      try {
-                        if (userTeam) {
-                          await rFetch('PATCH', `teams?id=eq.${userTeam.id}`, { league_id: leagueId }, { Prefer: 'return=minimal' });
-                          showMsg(`✅ League updated for ${u.username}`, 'success');
-                        } else if (leagueId) {
-                          const teamName = u.username || 'Unknown';
-                          const result = await rFetch('POST', 'teams', {
-                            user_id: u.id,
-                            name: teamName,
-                            league_id: leagueId,
-                            total_points: 0,
-                            wins: 0,
-                            draws: 0,
-                            losses: 0,
-                            matches_played: 0,
-                            goals_for: 0,
-                            goals_against: 0,
-                            goal_difference: 0,
-                            is_active: true
-                          }, { Prefer: 'return=representation' });
-                          if (result.ok) {
-                            showMsg(`✅ Team "${teamName}" created and assigned to league`, 'success');
-                          } else {
-                            showMsg('❌ Failed to create team: ' + JSON.stringify(result.data), 'danger');
-                          }
-                        } else {
-                          showMsg('No league selected', 'info');
-                        }
-                        loadAll();
-                      } catch (err) {
-                        showMsg('❌ Error: ' + err.message, 'danger');
-                        console.error('League assignment error:', err);
-                      }
-                    }}
-                  >
-                    <option value="">-- No League --</option>
-                    {leagues.map(l => (
-                      <option key={l.id} value={l.id}>
-                        {l.country} – {l.name} (Div {l.tier})
-                      </option>
-                    ))}
-                  </select>
-                </td>
-                <td>
-                  {u.id !== user.id && (
-                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                      {u.role !== 'admin'
-                        ? <button className="btn btn-secondary btn-sm" onClick={() => setRole(u.id, 'admin')}>Make Admin</button>
-                        : <button className="btn btn-secondary btn-sm" onClick={() => setRole(u.id, 'player')}>Demote</button>}
-                      <button className={`btn btn-sm ${u.is_blocked ? 'btn-success' : 'btn-danger'}`} 
-                        onClick={() => blockUser(u.id, !u.is_blocked)}>
-                        {u.is_blocked ? 'Unblock' : 'Block'}
-                      </button>
-                    </div>
-                  )}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  </div>
-)}
 
-          {/* ── LOGS ──────────────────────────────────────────────────── */}
+          {section === 'users' && (
+            <div className="card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: 8 }}>
+                <div style={{ fontWeight: 700 }}>👥 Users ({users.length})</div>
+                <input className="form-input" placeholder="Search..." value={userSearch} onChange={e => setUserSearch(e.target.value)} style={{ width: 200 }} />
+              </div>
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      {['Username', 'Team Name', 'Email', 'Phone', 'Role', 'Status', 'League', 'Actions'].map(h => <th key={h}>{h}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredUsers.map(u => {
+                      const userTeam = teams.find(t => t.user_id === u.id);
+                      return (
+                        <tr key={u.id}>
+                          <td style={{ fontWeight: 600 }}>{u.username || '—'}</td>
+                          <td>
+                            <input
+                              className="form-input"
+                              style={{ padding: '4px 8px', fontSize: '.78rem', minHeight: 'auto', width: '100%', maxWidth: '150px' }}
+                              value={userTeam?.name || ''}
+                              placeholder="Team name"
+                              onBlur={async (e) => {
+                                const newName = e.target.value.trim();
+                                if (!newName) return;
+                                try {
+                                  if (userTeam) {
+                                    await rFetch('PATCH', `teams?id=eq.${userTeam.id}`, { name: newName }, { Prefer: 'return=minimal' });
+                                    showMsg(`✅ Team name updated to "${newName}"`, 'success');
+                                    loadAll();
+                                  } else {
+                                    await rFetch('POST', 'teams', {
+                                      user_id: u.id,
+                                      name: newName,
+                                      league_id: null,
+                                      total_points: 0,
+                                      wins: 0,
+                                      draws: 0,
+                                      losses: 0,
+                                      matches_played: 0,
+                                      goals_for: 0,
+                                      goals_against: 0,
+                                      goal_difference: 0,
+                                      is_active: true
+                                    }, { Prefer: 'return=minimal' });
+                                    showMsg(`✅ Team "${newName}" created for ${u.username}`, 'success');
+                                    loadAll();
+                                  }
+                                } catch (err) {
+                                  showMsg('❌ Error updating team: ' + err.message, 'danger');
+                                }
+                              }}
+                              onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                            />
+                          </td>
+                          <td className="text-muted text-sm">{u.email || '—'}</td>
+                          <td className="text-muted text-sm">{u.phone || '—'}</td>
+                          <td>
+                            <span className={`badge ${u.role === 'admin' ? 'badge-gold' : 'badge-gray'}`}>
+                              {u.role || 'player'}
+                            </span>
+                          </td>
+                          <td>
+                            <span className={`badge ${u.is_blocked ? 'badge-red' : 'badge-green'}`}>
+                              {u.is_blocked ? 'Blocked' : 'Active'}
+                            </span>
+                          </td>
+                          <td>
+                            <select 
+                              className="form-select" 
+                              style={{ padding: '4px 8px', fontSize: '.78rem', minHeight: 'auto', width: '100%', maxWidth: '140px' }}
+                              value={userTeam?.league_id || ''}
+                              onChange={async (e) => {
+                                const leagueId = e.target.value || null;
+                                try {
+                                  if (userTeam) {
+                                    await rFetch('PATCH', `teams?id=eq.${userTeam.id}`, { league_id: leagueId }, { Prefer: 'return=minimal' });
+                                    showMsg(`✅ League updated for ${u.username}`, 'success');
+                                  } else if (leagueId) {
+                                    const teamName = u.username || 'Unknown';
+                                    const result = await rFetch('POST', 'teams', {
+                                      user_id: u.id,
+                                      name: teamName,
+                                      league_id: leagueId,
+                                      total_points: 0,
+                                      wins: 0,
+                                      draws: 0,
+                                      losses: 0,
+                                      matches_played: 0,
+                                      goals_for: 0,
+                                      goals_against: 0,
+                                      goal_difference: 0,
+                                      is_active: true
+                                    }, { Prefer: 'return=representation' });
+                                    if (result.ok) {
+                                      showMsg(`✅ Team "${teamName}" created and assigned to league`, 'success');
+                                    } else {
+                                      showMsg('❌ Failed to create team', 'danger');
+                                    }
+                                  }
+                                  loadAll();
+                                } catch (err) {
+                                  showMsg('❌ Error: ' + err.message, 'danger');
+                                }
+                              }}
+                            >
+                              <option value="">-- No League --</option>
+                              {leagues.map(l => (
+                                <option key={l.id} value={l.id}>
+                                  {l.country} – {l.name} (Div {l.tier})
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td>
+                            {u.id !== user.id && (
+                              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                                {u.role !== 'admin'
+                                  ? <button className="btn btn-secondary btn-sm" onClick={() => setRole(u.id, 'admin')}>Make Admin</button>
+                                  : <button className="btn btn-secondary btn-sm" onClick={() => setRole(u.id, 'player')}>Demote</button>}
+                                <button className={`btn btn-sm ${u.is_blocked ? 'btn-success' : 'btn-danger'}`} 
+                                  onClick={() => blockUser(u.id, !u.is_blocked)}>
+                                  {u.is_blocked ? 'Unblock' : 'Block'}
+                                </button>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
           {section === 'logs' && (
             <div className="card">
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'1rem', flexWrap:'wrap', gap:8 }}>
@@ -1001,9 +969,8 @@ const uniqueFilteredLb = filteredLb.filter((r, index, self) =>
                   </div>}
             </div>
           )}
-
-        </div>{/* end admin-content */}
-      </div>{/* end admin-layout */}
+        </div>
+      </div>
     </div>
   );
 }
