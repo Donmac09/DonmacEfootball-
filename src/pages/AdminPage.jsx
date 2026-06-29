@@ -96,7 +96,7 @@ async function loadAll() {
     apiFetch('GET', 'teams?select=*,leagues(name,country)&order=total_points.desc'),
     apiFetch('GET', 'cups?select=*,leagues(name,country)'),
     apiFetch('GET', 'european_competitions?select=*'),
-    apiFetch('GET', 'users?select=*&order=created_at.desc'),
+    apiFetch('GET', 'users?select=id,username,email,phone,role,is_blocked,created_at&order=created_at.desc'),
     apiFetch('GET', 'free_play_leaderboard?select=*,users!inner(id,username,email)&order=points.desc'),
     apiFetch('GET', 'fixtures?status=eq.pending_review&select=*,home:home_team_id(name),away:away_team_id(name),leagues(name)&order=created_at'),
     apiFetch('GET', 'cup_fixtures?status=eq.pending_review&select=*,home:home_team_id(name),away:away_team_id(name),cups(name)&order=created_at'),
@@ -108,7 +108,16 @@ async function loadAll() {
   setTeams(Array.isArray(t.data) ? t.data : []);
   setCups(Array.isArray(c.data) ? c.data : []);
   setEuroComps(Array.isArray(e.data) ? e.data : []);
-  setUsers(Array.isArray(u.data) ? u.data : []);
+  
+  // Deduplicate users by id (in case of duplicates)
+  const usersData = Array.isArray(u.data) ? u.data : [];
+  const seenUsers = new Set();
+  const dedupedUsers = usersData.filter(item => {
+    if (seenUsers.has(item.id)) return false;
+    seenUsers.add(item.id);
+    return true;
+  });
+  setUsers(dedupedUsers);
   
   // Deduplicate leaderboard by user_id
   const lbData = Array.isArray(lb.data) ? lb.data : [];
@@ -144,7 +153,6 @@ async function loadAll() {
   ];
   setPending(allPending);
 }
-
   async function loadPointsHistory() {
     const r = await apiFetch('GET',
       'player_points_history?select=*,admin:admin_id(username),player:player_id(username)&order=created_at.desc&limit=100'
@@ -820,39 +828,133 @@ const uniqueFilteredLb = filteredLb.filter((r, index, self) =>
           )}
 
           {/* ── USERS ─────────────────────────────────────────────────── */}
-          {section === 'users' && (
-            <div className="card">
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'1rem', flexWrap:'wrap', gap:8 }}>
-                <div style={{ fontWeight:700 }}>👥 Users ({users.length})</div>
-                <input className="form-input" placeholder="Search..." value={userSearch} onChange={e => setUserSearch(e.target.value)} style={{ width:200 }} />
-              </div>
-              <div className="table-wrap">
-                <table>
-                  <thead><tr>{['Username','Email','Role','Status','Actions'].map(h => <th key={h}>{h}</th>)}</tr></thead>
-                  <tbody>
-                    {filteredUsers.map(u => (
-                      <tr key={u.id}>
-                        <td style={{ fontWeight:600 }}>{u.username || '—'}</td>
-                        <td className="text-muted text-sm">{u.email}</td>
-                        <td><span className={`badge ${u.role==='admin'?'badge-gold':'badge-gray'}`}>{u.role||'player'}</span></td>
-                        <td><span className={`badge ${u.is_blocked?'badge-red':'badge-green'}`}>{u.is_blocked?'Blocked':'Active'}</span></td>
-                        <td>
-                          {u.id !== user.id && (
-                            <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
-                              {u.role !== 'admin'
-                                ? <button className="btn btn-secondary btn-sm" onClick={() => setRole(u.id, 'admin')}>Make Admin</button>
-                                : <button className="btn btn-secondary btn-sm" onClick={() => setRole(u.id, 'player')}>Demote</button>}
-                              <button className={`btn btn-sm ${u.is_blocked?'btn-success':'btn-danger'}`} onClick={() => blockUser(u.id, !u.is_blocked)}>{u.is_blocked?'Unblock':'Block'}</button>
-                            </div>
-                          )}
-                        </td>
-                      </tr>
+{section === 'users' && (
+  <div className="card">
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: 8 }}>
+      <div style={{ fontWeight: 700 }}>👥 Users ({users.length})</div>
+      <input className="form-input" placeholder="Search..." value={userSearch} onChange={e => setUserSearch(e.target.value)} style={{ width: 200 }} />
+    </div>
+    <div className="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            {['Username', 'Team Name', 'Email', 'Phone', 'Role', 'Status', 'League', 'Actions'].map(h => <th key={h}>{h}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {filteredUsers.map(u => {
+            // Get user's team
+            const userTeam = teams.find(t => t.user_id === u.id);
+            const userLeague = userTeam ? leagues.find(l => l.id === userTeam.league_id) : null;
+            
+            return (
+              <tr key={u.id}>
+                <td style={{ fontWeight: 600 }}>{u.username || '—'}</td>
+                <td>
+                  <input
+                    className="form-input"
+                    style={{ padding: '4px 8px', fontSize: '.78rem', minHeight: 'auto', width: '100%', maxWidth: '150px' }}
+                    value={userTeam?.name || ''}
+                    placeholder="Team name"
+                    onChange={async (e) => {
+                      const newName = e.target.value;
+                      if (userTeam) {
+                        await rFetch('PATCH', `teams?id=eq.${userTeam.id}`, { name: newName }, { Prefer: 'return=minimal' });
+                        showMsg(`✅ Team name updated to "${newName}"`, 'success');
+                        loadAll();
+                      } else if (newName.trim()) {
+                        // Create team if doesn't exist
+                        await rFetch('POST', 'teams', {
+                          user_id: u.id,
+                          name: newName,
+                          league_id: null,
+                          total_points: 0,
+                          wins: 0,
+                          draws: 0,
+                          losses: 0,
+                          matches_played: 0,
+                          goals_for: 0,
+                          goals_against: 0,
+                          goal_difference: 0,
+                          is_active: true
+                        }, { Prefer: 'return=minimal' });
+                        showMsg(`✅ Team "${newName}" created for ${u.username}`, 'success');
+                        loadAll();
+                      }
+                    }}
+                  />
+                </td>
+                <td className="text-muted text-sm">{u.email || '—'}</td>
+                <td className="text-muted text-sm">{u.phone || '—'}</td>
+                <td>
+                  <span className={`badge ${u.role === 'admin' ? 'badge-gold' : 'badge-gray'}`}>
+                    {u.role || 'player'}
+                  </span>
+                </td>
+                <td>
+                  <span className={`badge ${u.is_blocked ? 'badge-red' : 'badge-green'}`}>
+                    {u.is_blocked ? 'Blocked' : 'Active'}
+                  </span>
+                </td>
+                <td>
+                  <select 
+                    className="form-select" 
+                    style={{ padding: '4px 8px', fontSize: '.78rem', minHeight: 'auto', width: '100%', maxWidth: '140px' }}
+                    value={userTeam?.league_id || ''}
+                    onChange={async (e) => {
+                      const leagueId = e.target.value || null;
+                      if (userTeam) {
+                        await rFetch('PATCH', `teams?id=eq.${userTeam.id}`, { league_id: leagueId }, { Prefer: 'return=minimal' });
+                      } else if (leagueId) {
+                        const teamName = userTeam?.name || u.username || 'Unknown';
+                        await rFetch('POST', 'teams', {
+                          user_id: u.id,
+                          name: teamName,
+                          league_id: leagueId,
+                          total_points: 0,
+                          wins: 0,
+                          draws: 0,
+                          losses: 0,
+                          matches_played: 0,
+                          goals_for: 0,
+                          goals_against: 0,
+                          goal_difference: 0,
+                          is_active: true
+                        }, { Prefer: 'return=minimal' });
+                      }
+                      showMsg(`✅ League updated for ${u.username}`, 'success');
+                      loadAll();
+                    }}
+                  >
+                    <option value="">-- No League --</option>
+                    {leagues.map(l => (
+                      <option key={l.id} value={l.id}>
+                        {l.country} – {l.name}
+                      </option>
                     ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
+                  </select>
+                </td>
+                <td>
+                  {u.id !== user.id && (
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                      {u.role !== 'admin'
+                        ? <button className="btn btn-secondary btn-sm" onClick={() => setRole(u.id, 'admin')}>Make Admin</button>
+                        : <button className="btn btn-secondary btn-sm" onClick={() => setRole(u.id, 'player')}>Demote</button>}
+                      <button className={`btn btn-sm ${u.is_blocked ? 'btn-success' : 'btn-danger'}`} 
+                        onClick={() => blockUser(u.id, !u.is_blocked)}>
+                        {u.is_blocked ? 'Unblock' : 'Block'}
+                      </button>
+                    </div>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  </div>
+)}
 
           {/* ── LOGS ──────────────────────────────────────────────────── */}
           {section === 'logs' && (
