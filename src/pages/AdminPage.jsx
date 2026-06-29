@@ -55,16 +55,7 @@ export default function AdminPage({ user, profile }) {
   const [ppReason, setPpReason]   = useState('');
   const [ppSearch, setPpSearch]   = useState('');
 
-  const tok = () => sessionStore.session?.access_token ?? SUPABASE_KEY;
-  const hdr = (ex = {}) => ({
-    apikey: SUPABASE_KEY,
-    Authorization: `Bearer ${tok()}`,
-    'Content-Type': 'application/json',
-    ...ex,
-  });
-
   async function rFetch(method, path, body, ex = {}) {
-  // Use SUPABASE_KEY directly for admin operations (bypass RLS)
   const r = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     method,
     headers: {
