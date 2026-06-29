@@ -15,18 +15,18 @@ export const sb = createClient(SUPABASE_URL, SUPABASE_KEY, {
   },
 });
 
-export const sessionStore = { 
-  get session() { 
-    return sb.auth.session(); 
+export const sessionStore = {
+  get session() {
+    return null;
   },
-  set session(val) { 
-    // no-op - Supabase manages this
+  set session(val) {
+    // no-op
   }
 };
 
 export async function apiFetch(method, path, body, extraHeaders = {}) {
-  const session = await sb.auth.getSession();
-  const token = session?.data?.session?.access_token ?? SUPABASE_KEY;
+  const { data } = await sb.auth.getSession();
+  const token = data?.session?.access_token ?? SUPABASE_KEY;
   const url = `${SUPABASE_URL}/rest/v1/${path}`;
   const res = await fetch(url, {
     method,
@@ -39,7 +39,7 @@ export async function apiFetch(method, path, body, extraHeaders = {}) {
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   const text = await res.text();
-  let data = null;
-  try { data = JSON.parse(text); } catch { data = text; }
-  return { ok: res.ok, status: res.status, data, headers: res.headers };
+  let dataJson = null;
+  try { dataJson = JSON.parse(text); } catch { dataJson = text; }
+  return { ok: res.ok, status: res.status, data: dataJson, headers: res.headers };
 }
