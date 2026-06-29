@@ -59,9 +59,35 @@ export default function MatchSearchPage({ user, profile }) {
   }
 
   async function hdr(extra={}) {
-    const token = await getToken();
-    return { apikey: SUPABASE_KEY, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...extra };
+  // Try to get token from Supabase
+  let token = SUPABASE_KEY;
+  try {
+    const { data } = await sb.auth.getSession();
+    if (data?.session?.access_token) {
+      token = data.session.access_token;
+    }
+  } catch (e) {}
+  
+  // If no token from Supabase, try localStorage directly
+  if (token === SUPABASE_KEY) {
+    try {
+      const stored = localStorage.getItem('sb-gyjhjkbdkaoitjuemdsl-auth-token');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed?.access_token) {
+          token = parsed.access_token;
+        }
+      }
+    } catch (e) {}
   }
+  
+  return { 
+    apikey: SUPABASE_KEY, 
+    Authorization: `Bearer ${token}`, 
+    'Content-Type': 'application/json', 
+    ...extra 
+  };
+}
 
   async function qGet(path) {
     const r = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, { headers: await hdr() });
