@@ -7,8 +7,9 @@ export default function Navbar({ page, setPage }) {
   const [notifCount, setNotifCount] = useState(0);
   const [showNotifs, setShowNotifs]  = useState(false);
   const [notifs, setNotifs]          = useState([]);
+  const [menuOpen, setMenuOpen]     = useState(false);
 
-  // Desktop nav items
+  // All nav items
   const navItems = [
     ['home',        '🏠', 'Home'],
     ['leagues',     '🏟️', 'Leagues'],
@@ -21,7 +22,7 @@ export default function Navbar({ page, setPage }) {
   ];
   if (profile?.role === 'admin') navItems.push(['admin', '⚙️', 'Admin']);
 
-  // Bottom nav shows most important 5 items
+  // Bottom nav for mobile
   const bottomNav = [
     ['home',        '🏠', 'Home'],
     ['leagues',     '🏟️', 'Leagues'],
@@ -69,127 +70,130 @@ export default function Navbar({ page, setPage }) {
 
   return (
     <>
-      {/* ── TOP NAVBAR ────────────────────────────────────────────── */}
-      <nav style={{
-        background: 'rgba(8,12,20,0.97)',
-        backdropFilter: 'blur(16px)',
-        borderBottom: '1px solid rgba(255,210,0,0.18)',
-        padding: '0 1.25rem',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        height: 62,
-        position: 'sticky',
-        top: 0,
-        zIndex: 200,
-        boxShadow: '0 2px 24px rgba(255,210,0,0.06)',
-      }}>
-        {/* Brand */}
+      {/* ── MOBILE HEADER WITH HAMBURGER ─────────────────────────── */}
+      <div className="mobile-header">
+        <button 
+          className="hamburger-btn" 
+          onClick={() => setMenuOpen(true)}
+          aria-label="Open menu"
+        >
+          ☰
+        </button>
         <div
           onClick={() => setPage('home')}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer',
-            fontWeight: 800, fontSize: '1rem', whiteSpace: 'nowrap', flexShrink: 0,
-            background: 'linear-gradient(90deg,#ffd200,#00d4ff)',
-            WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-          }}>
-          <div style={{
-            width: 34, height: 34, borderRadius: 8,
-            background: 'linear-gradient(135deg,#ffd200,#00d4ff)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontWeight: 900, fontSize: '.78rem', color: '#000',
-            boxShadow: '0 0 12px rgba(255,210,0,0.4)', flexShrink: 0,
-          }}>DE</div>
-          <span>DONMAC eFOOTBALL</span>
+          className="mobile-brand"
+        >
+          ⚽ DONMAC
         </div>
+        <div style={{ width: 40 }}></div>
+      </div>
 
-        {/* Desktop nav links */}
-        <div className="nav-links" style={{ display: 'flex', gap: 2, flex: 1, margin: '0 .75rem', overflowX: 'auto' }}>
+      {/* ── SIDEBAR MENU ──────────────────────────────────────────── */}
+      {menuOpen && (
+        <div className="nav-overlay" onClick={() => setMenuOpen(false)} />
+      )}
+      <div className={`navbar-sidebar ${menuOpen ? 'open' : ''}`}>
+        <div className="sidebar-header">
+          <div style={{ fontWeight: 700, fontSize: '1rem' }}>
+            {profile?.username ? `👋 ${profile.username}` : 'Menu'}
+          </div>
+          <button 
+            className="close-btn" 
+            onClick={() => setMenuOpen(false)}
+            aria-label="Close menu"
+          >
+            ✕
+          </button>
+        </div>
+        <nav className="sidebar-nav">
           {navItems.map(([id, icon, label]) => (
             <button
               key={id}
-              onClick={() => setPage(id)}
-              style={{
-                padding: '6px 9px', borderRadius: 6, border: 'none', cursor: 'pointer',
-                fontSize: '.78rem', fontWeight: 500, whiteSpace: 'nowrap', fontFamily: 'inherit',
-                background: page === id ? 'rgba(255,210,0,0.12)' : 'transparent',
-                color: page === id ? '#ffd200' : '#8896ae',
-                boxShadow: page === id ? 'inset 0 -2px 0 #ffd200' : 'none',
-                transition: 'all .15s',
-              }}>
+              className={`sidebar-link ${page === id ? 'active' : ''}`}
+              onClick={() => { setPage(id); setMenuOpen(false); }}
+            >
               {icon} {label}
             </button>
           ))}
-        </div>
+          <button
+            className="sidebar-link"
+            onClick={() => { setPage('profile'); setMenuOpen(false); }}
+          >
+            👤 Profile
+          </button>
+        </nav>
+      </div>
 
-        {/* Right: bell + avatar */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+      {/* ── TOP NAVBAR (DESKTOP) ──────────────────────────────────── */}
+      <nav className="navbar-desktop">
+        <div className="nav-inner">
           <div
-            style={{ position: 'relative', cursor: 'pointer', fontSize: '1.2rem', padding: '4px', lineHeight: 1 }}
-            onClick={() => { setShowNotifs(v => !v); if (!showNotifs) loadNotifs(); }}>
-            🔔
-            {notifCount > 0 && (
-              <div style={{
-                position: 'absolute', top: 0, right: 0, width: 9, height: 9,
-                borderRadius: '50%', background: '#ef4444',
-                animation: 'notifpop .3s ease',
-              }} />
-            )}
+            onClick={() => setPage('home')}
+            className="nav-brand"
+          >
+            <div className="brand-icon">DE</div>
+            <span>DONMAC eFOOTBALL</span>
           </div>
-          <div
-            onClick={() => setPage('profile')}
-            style={{
-              width: 34, height: 34, borderRadius: '50%',
-              background: 'linear-gradient(135deg,#ffd200,#00d4ff)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontWeight: 800, fontSize: '.85rem', color: '#000',
-              cursor: 'pointer', boxShadow: '0 0 10px rgba(255,210,0,0.3)',
-              flexShrink: 0,
-            }}>
-            {(profile?.username || user?.email || 'U').charAt(0).toUpperCase()}
+
+          <div className="nav-links">
+            {navItems.map(([id, icon, label]) => (
+              <button
+                key={id}
+                className={`nav-link ${page === id ? 'active' : ''}`}
+                onClick={() => setPage(id)}
+              >
+                {icon} {label}
+              </button>
+            ))}
+          </div>
+
+          <div className="nav-right">
+            <div
+              className="bell-icon"
+              onClick={() => { setShowNotifs(v => !v); if (!showNotifs) loadNotifs(); }}
+            >
+              🔔
+              {notifCount > 0 && <span className="bell-dot" />}
+            </div>
+            <div
+              className="avatar"
+              onClick={() => setPage('profile')}
+            >
+              {(profile?.username || user?.email || 'U').charAt(0).toUpperCase()}
+            </div>
           </div>
         </div>
       </nav>
 
       {/* ── NOTIFICATIONS PANEL ───────────────────────────────────── */}
       {showNotifs && (
-        <div onClick={() => setShowNotifs(false)} style={{ position: 'fixed', inset: 0, zIndex: 199 }}>
+        <div onClick={() => setShowNotifs(false)} className="notif-overlay">
           <div
             onClick={e => e.stopPropagation()}
-            style={{
-              position: 'fixed', top: 68, right: 12, width: 320,
-              background: 'var(--card)', border: '1px solid var(--border)',
-              borderRadius: 12, zIndex: 200, maxHeight: 440,
-              display: 'flex', flexDirection: 'column',
-              boxShadow: '0 8px 32px rgba(0,0,0,.5)',
-            }}>
-            <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontWeight: 600, fontSize: '.9rem' }}>🔔 Notifications</span>
+            className="notif-panel"
+          >
+            <div className="notif-header">
+              <span>🔔 Notifications</span>
               <div style={{ display: 'flex', gap: 6 }}>
                 <button className="btn btn-secondary btn-sm" onClick={markAllRead}>All read</button>
                 <button className="btn btn-secondary btn-sm" onClick={() => setShowNotifs(false)}>✕</button>
               </div>
             </div>
-            <div style={{ overflowY: 'auto', flex: 1 }}>
+            <div className="notif-list">
               {notifs.length === 0
-                ? <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--muted)', fontSize: '.875rem' }}>No notifications</div>
+                ? <div className="notif-empty">No notifications</div>
                 : notifs.map(n => (
                     <div
                       key={n.id}
+                      className={`notif-item ${n.read ? 'read' : 'unread'}`}
                       onClick={() => { setShowNotifs(false); setPage('matchmaking'); }}
-                      style={{
-                        padding: '10px 14px', borderBottom: '1px solid var(--border)',
-                        background: n.read ? 'transparent' : 'rgba(255,210,0,0.04)',
-                        cursor: 'pointer', display: 'flex', gap: 10,
-                      }}>
-                      <span style={{ fontSize: '1.1rem', flexShrink: 0 }}>
-                        {n.type === 'challenge' ? '⚔️' : '📢'}
-                      </span>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: '.875rem', color: n.read ? 'var(--muted)' : 'var(--text)' }}>{n.message}</div>
-                        <div style={{ fontSize: '.72rem', color: 'var(--muted)', marginTop: 2 }}>{new Date(n.created_at).toLocaleString()}</div>
+                    >
+                      <span className="notif-icon">{n.type === 'challenge' ? '⚔️' : '📢'}</span>
+                      <div className="notif-body">
+                        <div className="notif-message">{n.message}</div>
+                        <div className="notif-time">{new Date(n.created_at).toLocaleString()}</div>
                       </div>
-                      {!n.read && <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--yellow)', flexShrink: 0, marginTop: 4 }} />}
+                      {!n.read && <div className="notif-unread-dot" />}
                     </div>
                   ))}
             </div>
@@ -203,15 +207,16 @@ export default function Navbar({ page, setPage }) {
           <button
             key={id}
             className={`mobile-bottom-nav-item ${page === id ? 'active' : ''}`}
-            onClick={() => setPage(id)}>
+            onClick={() => setPage(id)}
+          >
             <span>{icon}</span>
             <span>{label}</span>
           </button>
         ))}
-        {/* More button → show profile/admin */}
         <button
           className={`mobile-bottom-nav-item ${['profile','admin','europe','cups'].includes(page) ? 'active' : ''}`}
-          onClick={() => setPage(profile?.role === 'admin' ? 'admin' : 'profile')}>
+          onClick={() => setPage(profile?.role === 'admin' ? 'admin' : 'profile')}
+        >
           <span>⋯</span>
           <span>More</span>
         </button>
