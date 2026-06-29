@@ -102,6 +102,7 @@ async function loadAll() {
     apiFetch('GET', 'cup_fixtures?status=eq.pending_review&select=*,home:home_team_id(name),away:away_team_id(name),cups(name)&order=created_at'),
     apiFetch('GET', 'european_fixtures?status=eq.pending_review&select=*,home:home_team_id(name),away:away_team_id(name),european_competitions(name)&order=created_at'),
     apiFetch('GET', 'free_play_matches?status=eq.pending_review&select=*,p1:player1_id(username),p2:player2_id(username)&order=created_at'),
+    apiFetch('GET', 'users?select=id,username,email,phone,role,is_blocked,created_at&order=created_at.desc'),
   ]);
 
   setLeagues(Array.isArray(l.data) ? l.data : []);
@@ -844,7 +845,6 @@ const uniqueFilteredLb = filteredLb.filter((r, index, self) =>
           {filteredUsers.map(u => {
             // Get user's team
             const userTeam = teams.find(t => t.user_id === u.id);
-            // const userLeague = userTeam ? leagues.find(l => l.id === userTeam.league_id) : null; // REMOVED - unused
             
             return (
               <tr key={u.id}>
@@ -855,31 +855,37 @@ const uniqueFilteredLb = filteredLb.filter((r, index, self) =>
                     style={{ padding: '4px 8px', fontSize: '.78rem', minHeight: 'auto', width: '100%', maxWidth: '150px' }}
                     value={userTeam?.name || ''}
                     placeholder="Team name"
-                    onChange={async (e) => {
-                      const newName = e.target.value;
-                      if (userTeam) {
-                        await rFetch('PATCH', `teams?id=eq.${userTeam.id}`, { name: newName }, { Prefer: 'return=minimal' });
-                        showMsg(`✅ Team name updated to "${newName}"`, 'success');
-                        loadAll();
-                      } else if (newName.trim()) {
-                        await rFetch('POST', 'teams', {
-                          user_id: u.id,
-                          name: newName,
-                          league_id: null,
-                          total_points: 0,
-                          wins: 0,
-                          draws: 0,
-                          losses: 0,
-                          matches_played: 0,
-                          goals_for: 0,
-                          goals_against: 0,
-                          goal_difference: 0,
-                          is_active: true
-                        }, { Prefer: 'return=minimal' });
-                        showMsg(`✅ Team "${newName}" created for ${u.username}`, 'success');
-                        loadAll();
+                    onBlur={async (e) => {
+                      const newName = e.target.value.trim();
+                      if (!newName) return;
+                      try {
+                        if (userTeam) {
+                          await rFetch('PATCH', `teams?id=eq.${userTeam.id}`, { name: newName }, { Prefer: 'return=minimal' });
+                          showMsg(`✅ Team name updated to "${newName}"`, 'success');
+                          loadAll();
+                        } else {
+                          await rFetch('POST', 'teams', {
+                            user_id: u.id,
+                            name: newName,
+                            league_id: null,
+                            total_points: 0,
+                            wins: 0,
+                            draws: 0,
+                            losses: 0,
+                            matches_played: 0,
+                            goals_for: 0,
+                            goals_against: 0,
+                            goal_difference: 0,
+                            is_active: true
+                          }, { Prefer: 'return=minimal' });
+                          showMsg(`✅ Team "${newName}" created for ${u.username}`, 'success');
+                          loadAll();
+                        }
+                      } catch (err) {
+                        showMsg('❌ Error updating team: ' + err.message, 'danger');
                       }
                     }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
                   />
                 </td>
                 <td className="text-muted text-sm">{u.email || '—'}</td>
@@ -901,33 +907,45 @@ const uniqueFilteredLb = filteredLb.filter((r, index, self) =>
                     value={userTeam?.league_id || ''}
                     onChange={async (e) => {
                       const leagueId = e.target.value || null;
-                      if (userTeam) {
-                        await rFetch('PATCH', `teams?id=eq.${userTeam.id}`, { league_id: leagueId }, { Prefer: 'return=minimal' });
-                      } else if (leagueId) {
-                        const teamName = userTeam?.name || u.username || 'Unknown';
-                        await rFetch('POST', 'teams', {
-                          user_id: u.id,
-                          name: teamName,
-                          league_id: leagueId,
-                          total_points: 0,
-                          wins: 0,
-                          draws: 0,
-                          losses: 0,
-                          matches_played: 0,
-                          goals_for: 0,
-                          goals_against: 0,
-                          goal_difference: 0,
-                          is_active: true
-                        }, { Prefer: 'return=minimal' });
+                      try {
+                        if (userTeam) {
+                          await rFetch('PATCH', `teams?id=eq.${userTeam.id}`, { league_id: leagueId }, { Prefer: 'return=minimal' });
+                          showMsg(`✅ League updated for ${u.username}`, 'success');
+                        } else if (leagueId) {
+                          const teamName = u.username || 'Unknown';
+                          const result = await rFetch('POST', 'teams', {
+                            user_id: u.id,
+                            name: teamName,
+                            league_id: leagueId,
+                            total_points: 0,
+                            wins: 0,
+                            draws: 0,
+                            losses: 0,
+                            matches_played: 0,
+                            goals_for: 0,
+                            goals_against: 0,
+                            goal_difference: 0,
+                            is_active: true
+                          }, { Prefer: 'return=representation' });
+                          if (result.ok) {
+                            showMsg(`✅ Team "${teamName}" created and assigned to league`, 'success');
+                          } else {
+                            showMsg('❌ Failed to create team: ' + JSON.stringify(result.data), 'danger');
+                          }
+                        } else {
+                          showMsg('No league selected', 'info');
+                        }
+                        loadAll();
+                      } catch (err) {
+                        showMsg('❌ Error: ' + err.message, 'danger');
+                        console.error('League assignment error:', err);
                       }
-                      showMsg(`✅ League updated for ${u.username}`, 'success');
-                      loadAll();
                     }}
                   >
                     <option value="">-- No League --</option>
                     {leagues.map(l => (
                       <option key={l.id} value={l.id}>
-                        {l.country} – {l.name}
+                        {l.country} – {l.name} (Div {l.tier})
                       </option>
                     ))}
                   </select>
@@ -952,7 +970,7 @@ const uniqueFilteredLb = filteredLb.filter((r, index, self) =>
       </table>
     </div>
   </div>
-)}  
+)}
 
           {/* ── LOGS ──────────────────────────────────────────────────── */}
           {section === 'logs' && (
