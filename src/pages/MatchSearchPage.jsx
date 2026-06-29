@@ -144,55 +144,89 @@ export default function MatchSearchPage({ user, profile }) {
   }
 
   async function tryMatch() {
-    if (matchingRef.current) return;
-    matchingRef.current = true;
-    try {
-      const mine = await qGet(`matchmaking_queue?user_id=eq.${user.id}&status=eq.waiting&select=id&limit=1`);
-      if (!Array.isArray(mine) || mine.length === 0) {
-        setInQueue(false);
-        inQueueRef.current = false;
-        setSearching(false);
-        return;
-      }
+  if (matchingRef.current) return;
+  matchingRef.current = true;
+  try {
+    const mine = await qGet(`matchmaking_queue?user_id=eq.${user.id}&status=eq.waiting&select=id&limit=1`);
+    if (!Array.isArray(mine) || mine.length === 0) {
+      setInQueue(false);
+      inQueueRef.current = false;
+      setSearching(false);
+      return;
+    }
 
-      const others = await qGet(`matchmaking_queue?status=eq.waiting&user_id=neq.${user.id}&select=id,user_id,users(username)&order=created_at.asc&limit=1`);
-      if (!Array.isArray(others) || others.length === 0) return;
+    const others = await qGet(`matchmaking_queue?status=eq.waiting&user_id=neq.${user.id}&select=id,user_id,users(username)&order=created_at.asc&limit=1`);
+    if (!Array.isArray(others) || others.length === 0) return;
 
-      const opp = others[0];
-      const cl1 = await qPatch(`matchmaking_queue?id=eq.${opp.id}&status=eq.waiting`, { status: 'matched' });
-      if (!Array.isArray(cl1) || cl1.length === 0) return;
+    const opp = others[0];
+    
+    // Mark opponent as matched
+    const cl1 = await qPatch(`matchmaking_queue?id=eq.${opp.id}&status=eq.waiting`, { status: 'matched' });
+    if (!Array.isArray(cl1) || cl1.length === 0) return;
 
-      const cl2 = await qPatch(`matchmaking_queue?user_id=eq.${user.id}&status=eq.waiting`, { status: 'matched' });
-      if (!Array.isArray(cl2) || cl2.length === 0) {
-        await qPatch(`matchmaking_queue?id=eq.${opp.id}`, { status: 'waiting' });
-        return;
-      }
+    // Mark current user as matched
+    const cl2 = await qPatch(`matchmaking_queue?user_id=eq.${user.id}&status=eq.waiting`, { status: 'matched' });
+    if (!Array.isArray(cl2) || cl2.length === 0) {
+      await qPatch(`matchmaking_queue?id=eq.${opp.id}`, { status: 'waiting' });
+      return;
+    }
 
-      await qPost('free_play_matches', {
+    // Create the match with status 'accepted'
+    const matchResult = await fetch(`${SUPABASE_URL}/rest/v1/free_play_matches`, {
+      method: 'POST',
+      headers: await hdr({ Prefer: 'return=representation' }),
+      body: JSON.stringify({
         player1_id: user.id,
         player2_id: opp.user_id,
         status: 'accepted',
-      });
-
-      const oppName = opp.users?.username || 'a player';
-      await qPost('notifications', [
-        { user_id: user.id, type: 'challenge', read: false, message: `✅ Matched with ${oppName}! Play then submit result.` },
-        { user_id: opp.user_id, type: 'challenge', read: false, message: `✅ Matched with ${profile?.username || 'a player'}! Play then submit result.` },
-      ]).catch(() => {});
-
-      setSearching(false);
-      setInQueue(false);
-      inQueueRef.current = false;
-      setMsg(`✅ Matched with ${oppName}! Play, then submit your result below.`);
-      loadMatches();
-      checkQueue();
-    } catch (e) {
-      console.error('tryMatch error', e);
-    } finally {
-      matchingRef.current = false;
+        created_at: new Date().toISOString(),
+      }),
+    });
+    
+    const matchData = await matchResult.json().catch(() => []);
+    if (!Array.isArray(matchData) || matchData.length === 0) {
+      console.error('Failed to create match');
+      return;
     }
-  }
 
+    const oppName = opp.users?.username || 'a player';
+    const userName = profile?.username || 'a player';
+
+    // Send notification to BOTH players
+    await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+      method: 'POST',
+      headers: await hdr({ Prefer: 'return=minimal' }),
+      body: JSON.stringify([
+        { 
+          user_id: user.id, 
+          type: 'challenge', 
+          read: false, 
+          message: `✅ Matched with ${oppName}! Play your game then submit the results.` 
+        },
+        { 
+          user_id: opp.user_id, 
+          type: 'challenge', 
+          read: false, 
+          message: `✅ Matched with ${userName}! Play your game then submit the results.` 
+        },
+      ]),
+    }).catch(() => {});
+
+    setSearching(false);
+    setInQueue(false);
+    inQueueRef.current = false;
+    setMsg(`✅ Matched with ${oppName}! Play your game, then submit your result below.`);
+    
+    // Reload matches to show the new match
+    await loadMatches();
+    await checkQueue();
+  } catch (e) {
+    console.error('tryMatch error', e);
+    setMsg('❌ Error during matchmaking: ' + e.message);
+  } finally {
+    matchingRef.current = false;
+  }
+}
   async function submitResult() {
     if (!screenshot) { setMsg('Screenshot is required'); return; }
     setSubmitting(true);
