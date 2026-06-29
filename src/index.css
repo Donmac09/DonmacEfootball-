@@ -1453,3 +1453,64 @@ tr:hover td {
     border: 1px solid #ddd;
   }
 }
+/* ── MOBILE HEADER RIGHT ──────────────────────────────────────────── */
+.mobile-header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.mobile-bell {
+  position: relative;
+  cursor: pointer;
+  font-size: 1.3rem;
+  padding: 4px;
+  line-height: 1;
+}
+
+.mobile-bell-dot {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #ef4444;
+  animation: notifpop 0.3s ease;
+}
+
+.mobile-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #ffd200, #00d4ff);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 0.8rem;
+  color: #000;
+  cursor: pointer;
+  box-shadow: 0 0 10px rgba(255, 210, 0, 0.3);
+  flex-shrink: 0;
+}
+
+/* ── REMOVE BOTTOM NAV ────────────────────────────────────────────── */
+.mobile-bottom-nav {
+  display: none !important;
+}
+
+@media (max-width: 768px) {
+  .mobile-header {
+    display: flex !important;
+  }
+
+  .navbar-desktop {
+    display: none !important;
+  }
+
+  .main {
+    padding-top: 68px !important;
+    padding-bottom: 20px !important;
+  }
+}
