@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { apiFetch, SUPABASE_URL, SUPABASE_KEY } from '../services/supabase';
+import React, { useState, useEffect, useCallback } from 'react';
 
 const SECTIONS = [
   ['dashboard',     '📊 Dashboard'],
@@ -96,67 +97,78 @@ export default function AdminPage({ user, profile }) {
   }
 
   useEffect(() => {
-    if (profile?.role === 'admin') loadAll();
-  }, [profile]);
-
-  async function loadAll() {
-    try {
-      const [l, t, c, e, u, lb, pf, pcf, pef, pfp] = await Promise.all([
-        apiFetch('GET', 'leagues?select=*&order=country'),
-        apiFetch('GET', 'teams?select=*&order=total_points.desc'),
-        apiFetch('GET', 'cups?select=*'),
-        apiFetch('GET', 'european_competitions?select=*'),
-        apiFetch('GET', 'users?select=id,username,email,role,is_blocked,created_at&order=created_at.desc'),
-        apiFetch('GET', 'free_play_leaderboard?select=*&order=points.desc'),
-        apiFetch('GET', 'fixtures?status=eq.pending_review&select=*,home:home_team_id(name),away:away_team_id(name),leagues(name)&order=created_at'),
-        apiFetch('GET', 'cup_fixtures?status=eq.pending_review&select=*,home:home_team_id(name),away:away_team_id(name),cups(name)&order=created_at'),
-        apiFetch('GET', 'european_fixtures?status=eq.pending_review&select=*,home:home_team_id(name),away:away_team_id(name),european_competitions(name)&order=created_at'),
-        apiFetch('GET', 'free_play_matches?status=eq.pending_review&select=*,p1:player1_id(username),p2:player2_id(username)&order=created_at'),
-      ]);
-
-      setLeagues(Array.isArray(l.data) ? l.data : []);
-      setTeams(Array.isArray(t.data) ? t.data : []);
-      setCups(Array.isArray(c.data) ? c.data : []);
-      setEuroComps(Array.isArray(e.data) ? e.data : []);
-      setUsers(Array.isArray(u.data) ? u.data : []);
-      
-      const lbData = Array.isArray(lb.data) ? lb.data : [];
-      const seen = new Set();
-      const dedupedLb = lbData.filter(item => {
-        if (seen.has(item.user_id)) return false;
-        seen.add(item.user_id);
-        return true;
-      });
-      setLeaderboard(dedupedLb);
-
-      const allPending = [
-        ...(Array.isArray(pf.data) ? pf.data : []).map(f => ({
-          ...f, _type: 'league',
-          _label: `${f.home?.name || '?'} vs ${f.away?.name || '?'} — ${f.leagues?.name || ''}`,
-          _score: `${f.home_score ?? '?'} – ${f.away_score ?? '?'}`,
-        })),
-        ...(Array.isArray(pcf.data) ? pcf.data : []).map(f => ({
-          ...f, _type: 'cup',
-          _label: `${f.home?.name || '?'} vs ${f.away?.name || '?'} — ${f.cups?.name || ''}`,
-          _score: `${f.home_score ?? '?'} – ${f.away_score ?? '?'}`,
-        })),
-        ...(Array.isArray(pef.data) ? pef.data : []).map(f => ({
-          ...f, _type: 'european',
-          _label: `${f.home?.name || '?'} vs ${f.away?.name || '?'} — ${f.european_competitions?.name || ''}`,
-          _score: `${f.home_score ?? '?'} – ${f.away_score ?? '?'}`,
-        })),
-        ...(Array.isArray(pfp.data) ? pfp.data : []).map(f => ({
-          ...f, _type: 'freeplay',
-          _label: `${f.p1?.username || '?'} vs ${f.p2?.username || '?'} (Free Play)`,
-          _score: `${f.player1_score ?? '?'} – ${f.player2_score ?? '?'}`,
-        })),
-      ];
-      setPending(allPending);
-    } catch (error) {
-      console.error('loadAll error:', error);
-      showMsg('Error loading admin data: ' + error.message, 'danger');
-    }
+  if (profile?.role === 'admin') {
+    loadAll();
   }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [profile]);
+
+ // Then wrap loadAll with useCallback:
+const loadAll = useCallback(async () => {
+  try {
+    const [l, t, c, e, u, lb, pf, pcf, pef, pfp] = await Promise.all([
+      apiFetch('GET', 'leagues?select=*&order=country'),
+      apiFetch('GET', 'teams?select=*&order=total_points.desc'),
+      apiFetch('GET', 'cups?select=*'),
+      apiFetch('GET', 'european_competitions?select=*'),
+      apiFetch('GET', 'users?select=id,username,email,role,is_blocked,created_at&order=created_at.desc'),
+      apiFetch('GET', 'free_play_leaderboard?select=*&order=points.desc'),
+      apiFetch('GET', 'fixtures?status=eq.pending_review&select=*,home:home_team_id(name),away:away_team_id(name),leagues(name)&order=created_at'),
+      apiFetch('GET', 'cup_fixtures?status=eq.pending_review&select=*,home:home_team_id(name),away:away_team_id(name),cups(name)&order=created_at'),
+      apiFetch('GET', 'european_fixtures?status=eq.pending_review&select=*,home:home_team_id(name),away:away_team_id(name),european_competitions(name)&order=created_at'),
+      apiFetch('GET', 'free_play_matches?status=eq.pending_review&select=*,p1:player1_id(username),p2:player2_id(username)&order=created_at'),
+    ]);
+
+    setLeagues(Array.isArray(l.data) ? l.data : []);
+    setTeams(Array.isArray(t.data) ? t.data : []);
+    setCups(Array.isArray(c.data) ? c.data : []);
+    setEuroComps(Array.isArray(e.data) ? e.data : []);
+    setUsers(Array.isArray(u.data) ? u.data : []);
+    
+    const lbData = Array.isArray(lb.data) ? lb.data : [];
+    const seen = new Set();
+    const dedupedLb = lbData.filter(item => {
+      if (seen.has(item.user_id)) return false;
+      seen.add(item.user_id);
+      return true;
+    });
+    setLeaderboard(dedupedLb);
+
+    const allPending = [
+      ...(Array.isArray(pf.data) ? pf.data : []).map(f => ({
+        ...f, _type: 'league',
+        _label: `${f.home?.name || '?'} vs ${f.away?.name || '?'} — ${f.leagues?.name || ''}`,
+        _score: `${f.home_score ?? '?'} – ${f.away_score ?? '?'}`,
+      })),
+      ...(Array.isArray(pcf.data) ? pcf.data : []).map(f => ({
+        ...f, _type: 'cup',
+        _label: `${f.home?.name || '?'} vs ${f.away?.name || '?'} — ${f.cups?.name || ''}`,
+        _score: `${f.home_score ?? '?'} – ${f.away_score ?? '?'}`,
+      })),
+      ...(Array.isArray(pef.data) ? pef.data : []).map(f => ({
+        ...f, _type: 'european',
+        _label: `${f.home?.name || '?'} vs ${f.away?.name || '?'} — ${f.european_competitions?.name || ''}`,
+        _score: `${f.home_score ?? '?'} – ${f.away_score ?? '?'}`,
+      })),
+      ...(Array.isArray(pfp.data) ? pfp.data : []).map(f => ({
+        ...f, _type: 'freeplay',
+        _label: `${f.p1?.username || '?'} vs ${f.p2?.username || '?'} (Free Play)`,
+        _score: `${f.player1_score ?? '?'} – ${f.player2_score ?? '?'}`,
+      })),
+    ];
+    setPending(allPending);
+  } catch (error) {
+    console.error('loadAll error:', error);
+    showMsg('Error loading admin data: ' + error.message, 'danger');
+  }
+}, []); // Empty dependency array since it doesn't depend on any props/state
+
+// Then update the useEffect:
+useEffect(() => {
+  if (profile?.role === 'admin') {
+    loadAll();
+  }
+}, [profile, loadAll]);
 
   async function loadPointsHistory() {
     const r = await apiFetch('GET',
