@@ -826,7 +826,6 @@ const uniqueFilteredLb = filteredLb.filter((r, index, self) =>
               </div>
             </div>
           )}
-
           {/* ── USERS ─────────────────────────────────────────────────── */}
 {section === 'users' && (
   <div className="card">
@@ -845,7 +844,7 @@ const uniqueFilteredLb = filteredLb.filter((r, index, self) =>
           {filteredUsers.map(u => {
             // Get user's team
             const userTeam = teams.find(t => t.user_id === u.id);
-            const userLeague = userTeam ? leagues.find(l => l.id === userTeam.league_id) : null;
+            // const userLeague = userTeam ? leagues.find(l => l.id === userTeam.league_id) : null; // REMOVED - unused
             
             return (
               <tr key={u.id}>
@@ -863,7 +862,6 @@ const uniqueFilteredLb = filteredLb.filter((r, index, self) =>
                         showMsg(`✅ Team name updated to "${newName}"`, 'success');
                         loadAll();
                       } else if (newName.trim()) {
-                        // Create team if doesn't exist
                         await rFetch('POST', 'teams', {
                           user_id: u.id,
                           name: newName,
@@ -954,7 +952,7 @@ const uniqueFilteredLb = filteredLb.filter((r, index, self) =>
       </table>
     </div>
   </div>
-)}
+)}  
 
           {/* ── LOGS ──────────────────────────────────────────────────── */}
           {section === 'logs' && (
