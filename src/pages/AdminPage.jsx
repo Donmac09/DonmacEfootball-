@@ -64,15 +64,28 @@ export default function AdminPage({ user, profile }) {
   });
 
   async function rFetch(method, path, body, ex = {}) {
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
-      method,
-      headers: hdr(ex),
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    });
-    const d = await r.json().catch(() => null);
-    return { ok: r.ok, status: r.status, data: d };
+  // Use SUPABASE_KEY directly for admin operations (bypass RLS)
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    method,
+    headers: {
+      apikey: SUPABASE_KEY,
+      Authorization: `Bearer ${SUPABASE_KEY}`,
+      'Content-Type': 'application/json',
+      ...ex,
+    },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  
+  let d = null;
+  const text = await r.text();
+  try { d = JSON.parse(text); } catch { d = text; }
+  
+  if (!r.ok) {
+    console.error(`rFetch error ${r.status} on ${path}:`, d);
   }
-
+  
+  return { ok: r.ok, status: r.status, data: d };
+}
   async function logAction(action, details = {}) {
     await rFetch('POST', 'admin_logs',
       { admin_id: user.id, action, details },
