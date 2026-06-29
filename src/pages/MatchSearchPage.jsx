@@ -67,9 +67,6 @@ export default function MatchSearchPage({ user, profile }) {
     const r = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, { headers: await hdr() });
     return r.json().catch(()=>[]);
   }
-  async function qPost(path, body) {
-    return fetch(`${SUPABASE_URL}/rest/v1/${path}`, { method:'POST', headers: await hdr({ Prefer:'return=minimal' }), body: JSON.stringify(body) });
-  }
   async function qPatch(path, body) {
     const r = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, { method:'PATCH', headers: await hdr({ Prefer:'return=representation', Accept:'application/json' }), body: JSON.stringify(body) });
     return r.json().catch(()=>[]);
