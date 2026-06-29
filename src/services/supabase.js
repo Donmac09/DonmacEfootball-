@@ -15,18 +15,41 @@ export const sb = createClient(SUPABASE_URL, SUPABASE_KEY, {
   },
 });
 
+// Keep sessionStore for backward compatibility - reads from localStorage
 export const sessionStore = {
   get session() {
+    const stored = localStorage.getItem('sb-gyjhjkbdkaoitjuemdsl-auth-token');
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        if (parsed?.access_token) {
+          return { access_token: parsed.access_token };
+        }
+      } catch {}
+    }
     return null;
   },
   set session(val) {
-    // no-op
+    // Supabase manages this via localStorage
   }
 };
 
 export async function apiFetch(method, path, body, extraHeaders = {}) {
-  const { data } = await sb.auth.getSession();
-  const token = data?.session?.access_token ?? SUPABASE_KEY;
+  // Try to get token from Supabase session
+  let token = SUPABASE_KEY;
+  try {
+    const { data } = await sb.auth.getSession();
+    if (data?.session?.access_token) {
+      token = data.session.access_token;
+    }
+  } catch {
+    // Fallback to sessionStore
+    const stored = sessionStore.session;
+    if (stored?.access_token) {
+      token = stored.access_token;
+    }
+  }
+
   const url = `${SUPABASE_URL}/rest/v1/${path}`;
   const res = await fetch(url, {
     method,
