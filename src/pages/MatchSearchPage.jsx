@@ -1,11 +1,20 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import React, { useState, useEffect, useRef } from 'react';
-import { apiFetch, SUPABASE_URL, SUPABASE_KEY, sessionStore } from '../services/supabase';
+import { apiFetch, SUPABASE_URL, SUPABASE_KEY, sb } from '../services/supabase';
 
 function Leaderboard() {
   const [rows, setRows] = useState([]);
   useEffect(() => {
-    apiFetch('GET','free_play_leaderboard?select=*,users(username)&order=points.desc&limit=20').then(r => setRows(Array.isArray(r.data)?r.data:[]));
+    apiFetch('GET','free_play_leaderboard?select=*,users!inner(username)&order=points.desc&limit=20').then(r => {
+      const data = Array.isArray(r.data) ? r.data : [];
+      const seen = new Set();
+      const deduped = data.filter(item => {
+        if (seen.has(item.user_id)) return false;
+        seen.add(item.user_id);
+        return true;
+      });
+      setRows(deduped);
+    });
   }, []);
   return (
     <div className="table-wrap">
@@ -15,7 +24,7 @@ function Leaderboard() {
           {rows.length===0
             ? <tr><td colSpan={6} style={{ textAlign:'center', color:'var(--muted)', padding:'2rem' }}>No data yet</td></tr>
             : rows.map((r,i)=>(
-              <tr key={r.id}>
+              <tr key={`${r.user_id}-${i}`}>
                 <td className={`pos ${i===0?'pos-1':i===1?'pos-2':i===2?'pos-3':''}`}>{i+1}</td>
                 <td style={{ fontWeight:600 }}>{r.users?.username||'Unknown'}</td>
                 <td>{r.wins||0}</td><td>{r.draws||0}</td><td>{r.losses||0}</td>
@@ -44,25 +53,31 @@ export default function MatchSearchPage({ user, profile }) {
   const matchingRef = useRef(false);
   const pollRef     = useRef(null);
 
-  const tok = () => sessionStore.session?.access_token ?? SUPABASE_KEY;
-  const hdr = (extra={}) => ({ apikey: SUPABASE_KEY, Authorization: `Bearer ${tok()}`, 'Content-Type': 'application/json', ...extra });
+  async function getToken() {
+    const { data } = await sb.auth.getSession();
+    return data?.session?.access_token ?? SUPABASE_KEY;
+  }
+
+  async function hdr(extra={}) {
+    const token = await getToken();
+    return { apikey: SUPABASE_KEY, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...extra };
+  }
 
   async function qGet(path) {
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, { headers: hdr() });
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, { headers: await hdr() });
     return r.json().catch(()=>[]);
   }
   async function qPost(path, body) {
-    return fetch(`${SUPABASE_URL}/rest/v1/${path}`, { method:'POST', headers: hdr({ Prefer:'return=minimal' }), body: JSON.stringify(body) });
+    return fetch(`${SUPABASE_URL}/rest/v1/${path}`, { method:'POST', headers: await hdr({ Prefer:'return=minimal' }), body: JSON.stringify(body) });
   }
   async function qPatch(path, body) {
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, { method:'PATCH', headers: hdr({ Prefer:'return=representation', Accept:'application/json' }), body: JSON.stringify(body) });
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, { method:'PATCH', headers: await hdr({ Prefer:'return=representation', Accept:'application/json' }), body: JSON.stringify(body) });
     return r.json().catch(()=>[]);
   }
   async function qDel(path) {
-    return fetch(`${SUPABASE_URL}/rest/v1/${path}`, { method:'DELETE', headers: hdr() });
+    return fetch(`${SUPABASE_URL}/rest/v1/${path}`, { method:'DELETE', headers: await hdr() });
   }
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!user) return;
     loadMatches();
@@ -93,7 +108,7 @@ export default function MatchSearchPage({ user, profile }) {
     setLoading(true);
     try {
       await qDel(`matchmaking_queue?user_id=eq.${user.id}`);
-      const r = await fetch(`${SUPABASE_URL}/rest/v1/matchmaking_queue`, { method:'POST', headers: hdr({ Prefer:'return=minimal' }), body: JSON.stringify({ user_id: user.id, status:'waiting' }) });
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/matchmaking_queue`, { method:'POST', headers: await hdr({ Prefer:'return=minimal' }), body: JSON.stringify({ user_id: user.id, status:'waiting' }) });
       if (!r.ok) { const t = await r.json().catch(()=>{}); throw new Error(t?.message||'Failed to join'); }
       setInQueue(true); inQueueRef.current = true; setSearching(true);
       setMsg('🔍 Searching for an opponent...');
@@ -140,8 +155,9 @@ export default function MatchSearchPage({ user, profile }) {
     const ext = screenshot.name.split('.').pop();
     const fname = `match_${submitModal.id}_${Date.now()}.${ext}`;
     let screenshotUrl = null;
+    const token = await getToken();
     try {
-      const up = await fetch(`${SUPABASE_URL}/storage/v1/object/screenshots/${fname}`, { method:'POST', headers:{ apikey: SUPABASE_KEY, Authorization:`Bearer ${tok()}`, 'Content-Type': screenshot.type }, body: screenshot });
+      const up = await fetch(`${SUPABASE_URL}/storage/v1/object/screenshots/${fname}`, { method:'POST', headers:{ apikey: SUPABASE_KEY, Authorization:`Bearer ${token}`, 'Content-Type': screenshot.type }, body: screenshot });
       if (up.ok) screenshotUrl = `${SUPABASE_URL}/storage/v1/object/public/screenshots/${fname}`;
     } catch(e) {}
     const r = await qPatch(`free_play_matches?id=eq.${submitModal.id}`, { player1_score: scoreHome, player2_score: scoreAway, status:'pending_review', submitted_by: user.id, screenshot_url: screenshotUrl });
