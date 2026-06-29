@@ -89,51 +89,61 @@ export default function AdminPage({ user, profile }) {
     if (profile?.role === 'admin') loadAll();
   }, [profile]); // eslint-disable-line
 
-  async function loadAll() {
-    const [l, t, c, e, u, lb, pf, pcf, pef, pfp] = await Promise.all([
-      apiFetch('GET', 'leagues?select=*&order=country'),
-      apiFetch('GET', 'teams?select=*,leagues(name,country)&order=total_points.desc'),
-      apiFetch('GET', 'cups?select=*,leagues(name,country)'),
-      apiFetch('GET', 'european_competitions?select=*'),
-      apiFetch('GET', 'users?select=*&order=created_at.desc'),
-      apiFetch('GET', 'free_play_leaderboard?select=*,users(id,username,email)&order=points.desc'),
-      apiFetch('GET', 'fixtures?status=eq.pending_review&select=*,home:home_team_id(name),away:away_team_id(name),leagues(name)&order=created_at'),
-      apiFetch('GET', 'cup_fixtures?status=eq.pending_review&select=*,home:home_team_id(name),away:away_team_id(name),cups(name)&order=created_at'),
-      apiFetch('GET', 'european_fixtures?status=eq.pending_review&select=*,home:home_team_id(name),away:away_team_id(name),european_competitions(name)&order=created_at'),
-      apiFetch('GET', 'free_play_matches?status=eq.pending_review&select=*,p1:player1_id(username),p2:player2_id(username)&order=created_at'),
-    ]);
+  // Replace the loadAll function (around line 60-90)
+async function loadAll() {
+  const [l, t, c, e, u, lb, pf, pcf, pef, pfp] = await Promise.all([
+    apiFetch('GET', 'leagues?select=*&order=country'),
+    apiFetch('GET', 'teams?select=*,leagues(name,country)&order=total_points.desc'),
+    apiFetch('GET', 'cups?select=*,leagues(name,country)'),
+    apiFetch('GET', 'european_competitions?select=*'),
+    apiFetch('GET', 'users?select=*&order=created_at.desc'),
+    apiFetch('GET', 'free_play_leaderboard?select=*,users!inner(id,username,email)&order=points.desc'),
+    apiFetch('GET', 'fixtures?status=eq.pending_review&select=*,home:home_team_id(name),away:away_team_id(name),leagues(name)&order=created_at'),
+    apiFetch('GET', 'cup_fixtures?status=eq.pending_review&select=*,home:home_team_id(name),away:away_team_id(name),cups(name)&order=created_at'),
+    apiFetch('GET', 'european_fixtures?status=eq.pending_review&select=*,home:home_team_id(name),away:away_team_id(name),european_competitions(name)&order=created_at'),
+    apiFetch('GET', 'free_play_matches?status=eq.pending_review&select=*,p1:player1_id(username),p2:player2_id(username)&order=created_at'),
+  ]);
 
-    setLeagues(Array.isArray(l.data) ? l.data : []);
-    setTeams(Array.isArray(t.data) ? t.data : []);
-    setCups(Array.isArray(c.data) ? c.data : []);
-    setEuroComps(Array.isArray(e.data) ? e.data : []);
-    setUsers(Array.isArray(u.data) ? u.data : []);
-    setLeaderboard(Array.isArray(lb.data) ? lb.data : []);
+  setLeagues(Array.isArray(l.data) ? l.data : []);
+  setTeams(Array.isArray(t.data) ? t.data : []);
+  setCups(Array.isArray(c.data) ? c.data : []);
+  setEuroComps(Array.isArray(e.data) ? e.data : []);
+  setUsers(Array.isArray(u.data) ? u.data : []);
+  
+  // Deduplicate leaderboard by user_id
+  const lbData = Array.isArray(lb.data) ? lb.data : [];
+  const seen = new Set();
+  const dedupedLb = lbData.filter(item => {
+    if (seen.has(item.user_id)) return false;
+    seen.add(item.user_id);
+    return true;
+  });
+  setLeaderboard(dedupedLb);
 
-    const allPending = [
-      ...(Array.isArray(pf.data) ? pf.data : []).map(f => ({
-        ...f, _type: 'league',
-        _label: `${f.home?.name || '?'} vs ${f.away?.name || '?'} — ${f.leagues?.name || ''}`,
-        _score: `${f.home_score ?? '?'} – ${f.away_score ?? '?'}`,
-      })),
-      ...(Array.isArray(pcf.data) ? pcf.data : []).map(f => ({
-        ...f, _type: 'cup',
-        _label: `${f.home?.name || '?'} vs ${f.away?.name || '?'} — ${f.cups?.name || ''}`,
-        _score: `${f.home_score ?? '?'} – ${f.away_score ?? '?'}`,
-      })),
-      ...(Array.isArray(pef.data) ? pef.data : []).map(f => ({
-        ...f, _type: 'european',
-        _label: `${f.home?.name || '?'} vs ${f.away?.name || '?'} — ${f.european_competitions?.name || ''}`,
-        _score: `${f.home_score ?? '?'} – ${f.away_score ?? '?'}`,
-      })),
-      ...(Array.isArray(pfp.data) ? pfp.data : []).map(f => ({
-        ...f, _type: 'freeplay',
-        _label: `${f.p1?.username || '?'} vs ${f.p2?.username || '?'} (Free Play)`,
-        _score: `${f.player1_score ?? '?'} – ${f.player2_score ?? '?'}`,
-      })),
-    ];
-    setPending(allPending);
-  }
+  const allPending = [
+    ...(Array.isArray(pf.data) ? pf.data : []).map(f => ({
+      ...f, _type: 'league',
+      _label: `${f.home?.name || '?'} vs ${f.away?.name || '?'} — ${f.leagues?.name || ''}`,
+      _score: `${f.home_score ?? '?'} – ${f.away_score ?? '?'}`,
+    })),
+    ...(Array.isArray(pcf.data) ? pcf.data : []).map(f => ({
+      ...f, _type: 'cup',
+      _label: `${f.home?.name || '?'} vs ${f.away?.name || '?'} — ${f.cups?.name || ''}`,
+      _score: `${f.home_score ?? '?'} – ${f.away_score ?? '?'}`,
+    })),
+    ...(Array.isArray(pef.data) ? pef.data : []).map(f => ({
+      ...f, _type: 'european',
+      _label: `${f.home?.name || '?'} vs ${f.away?.name || '?'} — ${f.european_competitions?.name || ''}`,
+      _score: `${f.home_score ?? '?'} – ${f.away_score ?? '?'}`,
+    })),
+    ...(Array.isArray(pfp.data) ? pfp.data : []).map(f => ({
+      ...f, _type: 'freeplay',
+      _label: `${f.p1?.username || '?'} vs ${f.p2?.username || '?'} (Free Play)`,
+      _score: `${f.player1_score ?? '?'} – ${f.player2_score ?? '?'}`,
+    })),
+  ];
+  setPending(allPending);
+}
 
   async function loadPointsHistory() {
     const r = await apiFetch('GET',
@@ -360,9 +370,13 @@ export default function AdminPage({ user, profile }) {
   );
 
   const filteredLb = leaderboard.filter(r =>
-    !ppSearch ||
-    (r.users?.username || '').toLowerCase().includes(ppSearch.toLowerCase())
-  );
+  !ppSearch ||
+  (r.users?.username || '').toLowerCase().includes(ppSearch.toLowerCase())
+);
+// Add deduplication when rendering options
+const uniqueFilteredLb = filteredLb.filter((r, index, self) => 
+  index === self.findIndex(t => t.user_id === r.user_id)
+);
 
   // ── RENDER ────────────────────────────────────────────────────────────────
   return (
@@ -492,14 +506,14 @@ export default function AdminPage({ user, profile }) {
                   <div className="form-group" style={{ gridColumn:'1 / -1' }}>
                     <label className="form-label">Search & Select Player</label>
                     <input className="form-input" placeholder="Type to search player..." value={ppSearch} onChange={e => setPpSearch(e.target.value)} style={{ marginBottom:8 }} />
-                    <select className="form-select" value={ppPlayer} onChange={e => setPpPlayer(e.target.value)} size={Math.min(6, filteredLb.length + 1)} style={{ height:'auto', minHeight:44 }}>
-                      <option value="">-- Select a player --</option>
-                      {filteredLb.map(r => (
-                        <option key={r.user_id} value={r.user_id}>
-                          {r.users?.username || r.users?.email || r.user_id} — {r.points || 0} pts ({r.wins||0}W {r.draws||0}D {r.losses||0}L)
-                        </option>
-                      ))}
-                    </select>
+                    <select className="form-select" value={ppPlayer} onChange={e => setPpPlayer(e.target.value)} size={Math.min(6, uniqueFilteredLb.length + 1)} style={{ height:'auto', minHeight:44 }}>
+  <option value="">-- Select a player --</option>
+  {uniqueFilteredLb.map(r => (
+    <option key={r.user_id} value={r.user_id}>
+      {r.users?.username || r.users?.email || r.user_id} — {r.points || 0} pts ({r.wins||0}W {r.draws||0}D {r.losses||0}L)
+    </option>
+  ))}
+</select>
                   </div>
 
                   <div className="form-group">
@@ -554,9 +568,9 @@ export default function AdminPage({ user, profile }) {
                     </thead>
                     <tbody>
                       {leaderboard.length === 0
-                        ? <tr><td colSpan={11} style={{ textAlign:'center', color:'var(--muted)', padding:'2rem' }}>No players yet</td></tr>
-                        : leaderboard.map((r, i) => (
-                          <tr key={r.user_id} style={{ background: ppPlayer === r.user_id ? 'rgba(255,210,0,0.06)' : 'transparent' }}>
+  ? <tr><td colSpan={11} style={{ textAlign:'center', color:'var(--muted)', padding:'2rem' }}>No players yet</td></tr>
+  : leaderboard.map((r, i) => (
+    <tr key={r.user_id} style={{ background: ppPlayer === r.user_id ? 'rgba(255,210,0,0.06)' : 'transparent' }}>
                             <td className={`pos ${i===0?'pos-1':i===1?'pos-2':i===2?'pos-3':''}`}>{i+1}</td>
                             <td style={{ fontWeight:600 }}>{r.users?.username || '—'}</td>
                             <td>{r.matches_played||0}</td>
