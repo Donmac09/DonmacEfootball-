@@ -79,12 +79,17 @@ export default function MatchSearchPage({ user, profile }) {
   }
 
   useEffect(() => {
-    if (!user) return;
-    loadMatches();
+  if (!user) return;
+  loadMatches();
+  checkQueue();
+  pollRef.current = setInterval(() => {
     checkQueue();
-    pollRef.current = setInterval(() => { checkQueue(); if (inQueueRef.current) tryMatch(); }, 4000);
-    return () => clearInterval(pollRef.current);
-  }, [user]);
+    if (inQueueRef.current) {
+      tryMatch();
+    }
+  }, 4000);
+  return () => clearInterval(pollRef.current);
+}, [user]);
 
   useEffect(() => { inQueueRef.current = inQueue; }, [inQueue]);
 
@@ -198,7 +203,91 @@ async function checkQueue() {
   }
 }
 
-  async function submitResult() {
+  async function tryMatch() {
+  if (matchingRef.current) return;
+  matchingRef.current = true;
+  try {
+    const { data } = await sb.auth.getSession();
+    const token = data?.session?.access_token ?? SUPABASE_KEY;
+    const headers = {
+      apikey: SUPABASE_KEY,
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    };
+
+    const mine = await fetch(`${SUPABASE_URL}/rest/v1/matchmaking_queue?user_id=eq.${user.id}&status=eq.waiting&select=id&limit=1`, { headers });
+    const mineData = await mine.json().catch(() => []);
+    if (!Array.isArray(mineData) || mineData.length === 0) {
+      setInQueue(false);
+      inQueueRef.current = false;
+      setSearching(false);
+      return;
+    }
+
+    const others = await fetch(`${SUPABASE_URL}/rest/v1/matchmaking_queue?status=eq.waiting&user_id=neq.${user.id}&select=id,user_id,users(username)&order=created_at.asc&limit=1`, { headers });
+    const othersData = await others.json().catch(() => []);
+    if (!Array.isArray(othersData) || othersData.length === 0) return;
+
+    const opp = othersData[0];
+
+    // Try to match
+    const cl1 = await fetch(`${SUPABASE_URL}/rest/v1/matchmaking_queue?id=eq.${opp.id}&status=eq.waiting`, {
+      method: 'PATCH',
+      headers: { ...headers, Prefer: 'return=representation' },
+      body: JSON.stringify({ status: 'matched' }),
+    });
+    const cl1Data = await cl1.json().catch(() => []);
+    if (!Array.isArray(cl1Data) || cl1Data.length === 0) return;
+
+    const cl2 = await fetch(`${SUPABASE_URL}/rest/v1/matchmaking_queue?user_id=eq.${user.id}&status=eq.waiting`, {
+      method: 'PATCH',
+      headers: { ...headers, Prefer: 'return=representation' },
+      body: JSON.stringify({ status: 'matched' }),
+    });
+    const cl2Data = await cl2.json().catch(() => []);
+    if (!Array.isArray(cl2Data) || cl2Data.length === 0) {
+      await fetch(`${SUPABASE_URL}/rest/v1/matchmaking_queue?id=eq.${opp.id}`, {
+        method: 'PATCH',
+        headers: { ...headers, Prefer: 'return=minimal' },
+        body: JSON.stringify({ status: 'waiting' }),
+      });
+      return;
+    }
+
+    // Create match
+    await fetch(`${SUPABASE_URL}/rest/v1/free_play_matches`, {
+      method: 'POST',
+      headers: { ...headers, Prefer: 'return=minimal' },
+      body: JSON.stringify({
+        player1_id: user.id,
+        player2_id: opp.user_id,
+        status: 'accepted'
+      }),
+    });
+
+    const oppName = opp.users?.username || 'a player';
+    await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+      method: 'POST',
+      headers: { ...headers, Prefer: 'return=minimal' },
+      body: JSON.stringify([
+        { user_id: user.id, type: 'challenge', read: false, message: `✅ Matched with ${oppName}! Play then submit result.` },
+        { user_id: opp.user_id, type: 'challenge', read: false, message: `✅ Matched with ${profile?.username || 'a player'}! Play then submit result.` },
+      ]),
+    }).catch(() => {});
+
+    setSearching(false);
+    setInQueue(false);
+    inQueueRef.current = false;
+    setMsg(`✅ Matched with ${oppName}! Play, then submit your result below.`);
+    loadMatches();
+    checkQueue();
+  } catch (e) {
+    console.error('tryMatch error', e);
+  } finally {
+    matchingRef.current = false;
+  }
+}
+    async function submitResult() {
     if (!screenshot) { setMsg('Screenshot is required'); return; }
     setSubmitting(true);
     const ext = screenshot.name.split('.').pop();
@@ -288,8 +377,7 @@ async function checkQueue() {
             <div className="form-group"><label className="form-label">📸 Screenshot Evidence (Required)</label><input type="file" accept="image/*" onChange={e=>setScreenshot(e.target.files[0])} /></div>
             <div style={{ display:'flex', gap:8, marginTop:'1rem' }}>
               <button className="btn btn-primary" onClick={submitResult} disabled={submitting}>{submitting?'Submitting...':'📤 Submit'}</button>
-              <button className="btn btn-secondary" onClick={()=>setSubmitModal(null)}>Cancel</button>
-            </div>
+              <button className="btn btn-secondary" onClick={tryMatch}>⚡ Try Now</button>
           </div>
         </div>
       )}
