@@ -56,26 +56,31 @@ export default function AdminPage({ user, profile }) {
   const [ppSearch, setPpSearch]   = useState('');
 
   async function rFetch(method, path, body, ex = {}) {
-  const r = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
-    method,
-    headers: {
-      apikey: SUPABASE_KEY,
-      Authorization: `Bearer ${SUPABASE_KEY}`,
-      'Content-Type': 'application/json',
-      ...ex,
-    },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
-  
-  let d = null;
-  const text = await r.text();
-  try { d = JSON.parse(text); } catch { d = text; }
-  
-  if (!r.ok) {
-    console.error(`rFetch error ${r.status} on ${path}:`, d);
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+      method,
+      headers: {
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${SUPABASE_KEY}`,
+        'Content-Type': 'application/json',
+        ...ex,
+      },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+    
+    let d = null;
+    const text = await r.text();
+    try { d = JSON.parse(text); } catch { d = text; }
+    
+    if (!r.ok) {
+      console.error(`rFetch error ${r.status} on ${path}:`, d);
+    }
+    
+    return { ok: r.ok, status: r.status, data: d };
+  } catch (error) {
+    console.error('rFetch exception:', error);
+    return { ok: false, status: 500, data: null, error: error.message };
   }
-  
-  return { ok: r.ok, status: r.status, data: d };
 }
   async function logAction(action, details = {}) {
     await rFetch('POST', 'admin_logs',
@@ -95,68 +100,63 @@ export default function AdminPage({ user, profile }) {
 
   // Replace the loadAll function (around line 60-90)
 async function loadAll() {
-  const [l, t, c, e, u, lb, pf, pcf, pef, pfp] = await Promise.all([
-    apiFetch('GET', 'leagues?select=*&order=country'),
-    apiFetch('GET', 'teams?select=*,leagues(name,country)&order=total_points.desc'),
-    apiFetch('GET', 'cups?select=*,leagues(name,country)'),
-    apiFetch('GET', 'european_competitions?select=*'),
-    apiFetch('GET', 'users?select=id,username,email,phone,role,is_blocked,created_at&order=created_at.desc'),
-    apiFetch('GET', 'free_play_leaderboard?select=*,users!inner(id,username,email)&order=points.desc'),
-    apiFetch('GET', 'fixtures?status=eq.pending_review&select=*,home:home_team_id(name),away:away_team_id(name),leagues(name)&order=created_at'),
-    apiFetch('GET', 'cup_fixtures?status=eq.pending_review&select=*,home:home_team_id(name),away:away_team_id(name),cups(name)&order=created_at'),
-    apiFetch('GET', 'european_fixtures?status=eq.pending_review&select=*,home:home_team_id(name),away:away_team_id(name),european_competitions(name)&order=created_at'),
-    apiFetch('GET', 'free_play_matches?status=eq.pending_review&select=*,p1:player1_id(username),p2:player2_id(username)&order=created_at'),
-    apiFetch('GET', 'users?select=id,username,email,phone,role,is_blocked,created_at&order=created_at.desc'),
-  ]);
+  try {
+    const [l, t, c, e, u, lb, pf, pcf, pef, pfp] = await Promise.all([
+      apiFetch('GET', 'leagues?select=*&order=country'),
+      apiFetch('GET', 'teams?select=*,leagues(name,country)&order=total_points.desc'),
+      apiFetch('GET', 'cups?select=*,leagues(name,country)'),
+      apiFetch('GET', 'european_competitions?select=*'),
+      apiFetch('GET', 'users?select=id,username,email,role,is_blocked,created_at&order=created_at.desc'),
+      apiFetch('GET', 'free_play_leaderboard?select=*,users!inner(id,username,email)&order=points.desc'),
+      apiFetch('GET', 'fixtures?status=eq.pending_review&select=*,home:home_team_id(name),away:away_team_id(name),leagues(name)&order=created_at'),
+      apiFetch('GET', 'cup_fixtures?status=eq.pending_review&select=*,home:home_team_id(name),away:away_team_id(name),cups(name)&order=created_at'),
+      apiFetch('GET', 'european_fixtures?status=eq.pending_review&select=*,home:home_team_id(name),away:away_team_id(name),european_competitions(name)&order=created_at'),
+      apiFetch('GET', 'free_play_matches?status=eq.pending_review&select=*,p1:player1_id(username),p2:player2_id(username)&order=created_at'),
+    ]);
 
-  setLeagues(Array.isArray(l.data) ? l.data : []);
-  setTeams(Array.isArray(t.data) ? t.data : []);
-  setCups(Array.isArray(c.data) ? c.data : []);
-  setEuroComps(Array.isArray(e.data) ? e.data : []);
-  
-  // Deduplicate users by id (in case of duplicates)
-  const usersData = Array.isArray(u.data) ? u.data : [];
-  const seenUsers = new Set();
-  const dedupedUsers = usersData.filter(item => {
-    if (seenUsers.has(item.id)) return false;
-    seenUsers.add(item.id);
-    return true;
-  });
-  setUsers(dedupedUsers);
-  
-  // Deduplicate leaderboard by user_id
-  const lbData = Array.isArray(lb.data) ? lb.data : [];
-  const seen = new Set();
-  const dedupedLb = lbData.filter(item => {
-    if (seen.has(item.user_id)) return false;
-    seen.add(item.user_id);
-    return true;
-  });
-  setLeaderboard(dedupedLb);
+    setLeagues(Array.isArray(l.data) ? l.data : []);
+    setTeams(Array.isArray(t.data) ? t.data : []);
+    setCups(Array.isArray(c.data) ? c.data : []);
+    setEuroComps(Array.isArray(e.data) ? e.data : []);
+    setUsers(Array.isArray(u.data) ? u.data : []);
+    
+    // Deduplicate leaderboard
+    const lbData = Array.isArray(lb.data) ? lb.data : [];
+    const seen = new Set();
+    const dedupedLb = lbData.filter(item => {
+      if (seen.has(item.user_id)) return false;
+      seen.add(item.user_id);
+      return true;
+    });
+    setLeaderboard(dedupedLb);
 
-  const allPending = [
-    ...(Array.isArray(pf.data) ? pf.data : []).map(f => ({
-      ...f, _type: 'league',
-      _label: `${f.home?.name || '?'} vs ${f.away?.name || '?'} — ${f.leagues?.name || ''}`,
-      _score: `${f.home_score ?? '?'} – ${f.away_score ?? '?'}`,
-    })),
-    ...(Array.isArray(pcf.data) ? pcf.data : []).map(f => ({
-      ...f, _type: 'cup',
-      _label: `${f.home?.name || '?'} vs ${f.away?.name || '?'} — ${f.cups?.name || ''}`,
-      _score: `${f.home_score ?? '?'} – ${f.away_score ?? '?'}`,
-    })),
-    ...(Array.isArray(pef.data) ? pef.data : []).map(f => ({
-      ...f, _type: 'european',
-      _label: `${f.home?.name || '?'} vs ${f.away?.name || '?'} — ${f.european_competitions?.name || ''}`,
-      _score: `${f.home_score ?? '?'} – ${f.away_score ?? '?'}`,
-    })),
-    ...(Array.isArray(pfp.data) ? pfp.data : []).map(f => ({
-      ...f, _type: 'freeplay',
-      _label: `${f.p1?.username || '?'} vs ${f.p2?.username || '?'} (Free Play)`,
-      _score: `${f.player1_score ?? '?'} – ${f.player2_score ?? '?'}`,
-    })),
-  ];
-  setPending(allPending);
+    const allPending = [
+      ...(Array.isArray(pf.data) ? pf.data : []).map(f => ({
+        ...f, _type: 'league',
+        _label: `${f.home?.name || '?'} vs ${f.away?.name || '?'} — ${f.leagues?.name || ''}`,
+        _score: `${f.home_score ?? '?'} – ${f.away_score ?? '?'}`,
+      })),
+      ...(Array.isArray(pcf.data) ? pcf.data : []).map(f => ({
+        ...f, _type: 'cup',
+        _label: `${f.home?.name || '?'} vs ${f.away?.name || '?'} — ${f.cups?.name || ''}`,
+        _score: `${f.home_score ?? '?'} – ${f.away_score ?? '?'}`,
+      })),
+      ...(Array.isArray(pef.data) ? pef.data : []).map(f => ({
+        ...f, _type: 'european',
+        _label: `${f.home?.name || '?'} vs ${f.away?.name || '?'} — ${f.european_competitions?.name || ''}`,
+        _score: `${f.home_score ?? '?'} – ${f.away_score ?? '?'}`,
+      })),
+      ...(Array.isArray(pfp.data) ? pfp.data : []).map(f => ({
+        ...f, _type: 'freeplay',
+        _label: `${f.p1?.username || '?'} vs ${f.p2?.username || '?'} (Free Play)`,
+        _score: `${f.player1_score ?? '?'} – ${f.player2_score ?? '?'}`,
+      })),
+    ];
+    setPending(allPending);
+  } catch (error) {
+    console.error('loadAll error:', error);
+    showMsg('Error loading admin data: ' + error.message, 'danger');
+  }
 }
   async function loadPointsHistory() {
     const r = await apiFetch('GET',
@@ -893,7 +893,7 @@ const uniqueFilteredLb = filteredLb.filter((r, index, self) =>
                   />
                 </td>
                 <td className="text-muted text-sm">{u.email || '—'}</td>
-                <td className="text-muted text-sm">{u.phone || '—'}</td>
+                <td className="text-muted text-sm">{u.phone || 'Not set'}</td>
                 <td>
                   <span className={`badge ${u.role === 'admin' ? 'badge-gold' : 'badge-gray'}`}>
                     {u.role || 'player'}
