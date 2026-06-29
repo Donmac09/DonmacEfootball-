@@ -22,15 +22,6 @@ export default function Navbar({ page, setPage }) {
   ];
   if (profile?.role === 'admin') navItems.push(['admin', '⚙️', 'Admin']);
 
-  // Bottom nav for mobile
-  const bottomNav = [
-    ['home',        '🏠', 'Home'],
-    ['leagues',     '🏟️', 'Leagues'],
-    ['matchmaking', '⚽', 'Matches'],
-    ['chat',        '💬', 'Chat'],
-    ['team',        '👕', 'Team'],
-  ];
-
   useEffect(() => {
     if (!user) return;
     const check = async () => {
@@ -197,7 +188,7 @@ export default function Navbar({ page, setPage }) {
 
       {/* ── MOBILE BOTTOM NAV ─────────────────────────────────────── */}
       <div className="mobile-bottom-nav">
-        {bottomNav.map(([id, icon, label]) => (
+        {navItems.slice(0, 5).map(([id, icon, label]) => (
           <button
             key={id}
             className={`mobile-bottom-nav-item ${page === id ? 'active' : ''}`}
@@ -207,13 +198,6 @@ export default function Navbar({ page, setPage }) {
             <span>{label}</span>
           </button>
         ))}
-        <button
-          className={`mobile-bottom-nav-item ${['profile','admin','europe','cups'].includes(page) ? 'active' : ''}`}
-          onClick={() => setPage(profile?.role === 'admin' ? 'admin' : 'profile')}
-        >
-          <span>⋯</span>
-          <span>More</span>
-        </button>
       </div>
     </>
   );
