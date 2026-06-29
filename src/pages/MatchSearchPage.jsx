@@ -90,9 +90,18 @@ export default function MatchSearchPage({ user, profile }) {
 }
 
   async function qGet(path) {
+  try {
     const r = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, { headers: await hdr() });
-    return r.json().catch(()=>[]);
+    if (!r.ok) {
+      console.error(`qGet error ${r.status}: ${path}`);
+      return [];
+    }
+    return r.json().catch(() => []);
+  } catch (e) {
+    console.error('qGet exception:', e);
+    return [];
   }
+}
   async function qPatch(path, body) {
     const r = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, { method:'PATCH', headers: await hdr({ Prefer:'return=representation', Accept:'application/json' }), body: JSON.stringify(body) });
     return r.json().catch(()=>[]);
@@ -178,10 +187,15 @@ export default function MatchSearchPage({ user, profile }) {
       return;
     }
 
-    const others = await qGet(`matchmaking_queue?status=eq.waiting&user_id=neq.${user.id}&select=id,user_id,users(username)&order=created_at.asc&limit=1`);
+    // Get other players in queue - without the users relation
+    const others = await qGet(`matchmaking_queue?status=eq.waiting&user_id=neq.${user.id}&select=id,user_id&order=created_at.asc&limit=1`);
     if (!Array.isArray(others) || others.length === 0) return;
 
     const opp = others[0];
+    
+    // Get opponent username separately
+    const oppUser = await qGet(`users?id=eq.${opp.user_id}&select=username&limit=1`);
+    const oppName = (Array.isArray(oppUser) && oppUser.length > 0) ? oppUser[0].username : 'a player';
     
     // Mark opponent as matched
     const cl1 = await qPatch(`matchmaking_queue?id=eq.${opp.id}&status=eq.waiting`, { status: 'matched' });
@@ -195,24 +209,16 @@ export default function MatchSearchPage({ user, profile }) {
     }
 
     // Create the match with status 'accepted'
-    const matchResult = await fetch(`${SUPABASE_URL}/rest/v1/free_play_matches`, {
+    await fetch(`${SUPABASE_URL}/rest/v1/free_play_matches`, {
       method: 'POST',
-      headers: await hdr({ Prefer: 'return=representation' }),
+      headers: await hdr({ Prefer: 'return=minimal' }),
       body: JSON.stringify({
         player1_id: user.id,
         player2_id: opp.user_id,
         status: 'accepted',
-        created_at: new Date().toISOString(),
       }),
     });
-    
-    const matchData = await matchResult.json().catch(() => []);
-    if (!Array.isArray(matchData) || matchData.length === 0) {
-      console.error('Failed to create match');
-      return;
-    }
 
-    const oppName = opp.users?.username || 'a player';
     const userName = profile?.username || 'a player';
 
     // Send notification to BOTH players
