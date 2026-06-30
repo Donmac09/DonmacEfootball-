@@ -1514,8 +1514,9 @@ tr:hover td {
     padding-bottom: 20px !important;
   }
 }
-/* src/index.css - add these styles */
+/* src/index.css - Add these styles for the announcement banner */
 
+/* ── ANNOUNCEMENT BANNER ────────────────────────────────────────── */
 .announcement-banner {
   background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
   color: #fff;
@@ -1525,24 +1526,27 @@ tr:hover td {
   display: flex;
   align-items: center;
   gap: 14px;
-  box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-  border: 1px solid rgba(255,255,255,0.08);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   position: relative;
-  animation: slideDown 0.4s ease-out;
+  animation: announcementSlideDown 0.4s ease-out;
+  max-width: 1200px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
-.announcement-banner .icon {
+.announcement-icon {
   font-size: 1.8rem;
   flex-shrink: 0;
-  animation: pulse 2s infinite;
+  animation: announcementPulse 2s infinite;
 }
 
-.announcement-banner .content {
+.announcement-content {
   flex: 1;
   min-width: 0;
 }
 
-.announcement-banner .label {
+.announcement-label {
   font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 1px;
@@ -1551,21 +1555,21 @@ tr:hover td {
   margin-bottom: 2px;
 }
 
-.announcement-banner .message {
+.announcement-message {
   font-size: 0.95rem;
   font-weight: 500;
   word-break: break-word;
   line-height: 1.4;
 }
 
-.announcement-banner .count {
+.announcement-count {
   font-size: 0.7rem;
-  color: rgba(255,255,255,0.5);
+  color: rgba(255, 255, 255, 0.5);
   margin-top: 4px;
 }
 
-.announcement-banner .close-btn {
-  background: rgba(255,255,255,0.1);
+.announcement-close {
+  background: rgba(255, 255, 255, 0.1);
   border: none;
   color: #fff;
   cursor: pointer;
@@ -1576,16 +1580,53 @@ tr:hover td {
   flex-shrink: 0;
 }
 
-.announcement-banner .close-btn:hover {
-  background: rgba(255,255,255,0.2);
+.announcement-close:hover {
+  background: rgba(255, 255, 255, 0.2);
 }
 
-@keyframes slideDown {
-  from { opacity: 0; transform: translateY(-20px); }
-  to { opacity: 1; transform: translateY(0); }
+@keyframes announcementSlideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-@keyframes pulse {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.1); }
+@keyframes announcementPulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+}
+
+/* ── MOBILE RESPONSIVE ──────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .announcement-banner {
+    padding: 12px 16px;
+    margin: 6px 10px 10px 10px;
+    border-radius: 10px;
+    gap: 10px;
+  }
+
+  .announcement-icon {
+    font-size: 1.4rem;
+  }
+
+  .announcement-message {
+    font-size: 0.85rem;
+  }
+
+  .announcement-label {
+    font-size: 0.6rem;
+  }
+
+  .announcement-close {
+    font-size: 1rem;
+    padding: 2px 8px;
+  }
 }
