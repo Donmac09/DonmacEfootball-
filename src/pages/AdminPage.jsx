@@ -1285,14 +1285,15 @@ export default function AdminPage({ user, profile }) {
         onChange={async (e) => {
           const leagueId = e.target.value;
           if (!leagueId) return;
-          if (!window.confirm(`Assign ALL filtered users to ${leagues.find(l => l.id === leagueId)?.name}?`)) return;
+          const leagueName = leagues.find(l => l.id === leagueId)?.name;
+          if (!window.confirm(`Assign ALL filtered users to ${leagueName}?`)) return;
           
           // Assign all FILTERED users to the selected league
           for (const user of filteredUsers) {
             await rFetch('PATCH', `profiles?id=eq.${user.id}`, { league_id: leagueId }, { Prefer: 'return=minimal' });
             await rFetch('PATCH', `users?id=eq.${user.id}`, { league_id: leagueId }, { Prefer: 'return=minimal' });
           }
-          showMsg(`✅ ${filteredUsers.length} users assigned to ${leagues.find(l => l.id === leagueId)?.name}`);
+          showMsg(`✅ ${filteredUsers.length} users assigned to ${leagueName}`);
           loadAll();
         }}
         style={{ minWidth: '200px' }}
@@ -1330,7 +1331,6 @@ export default function AdminPage({ user, profile }) {
             <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--muted)', padding: '2rem' }}>No users found</td></tr>
           ) : (
             filteredUsers.map(u => {
-              // Get the current league name
               const currentLeague = leagues.find(l => l.id === u.league_id);
               return (
                 <tr key={u.id}>
