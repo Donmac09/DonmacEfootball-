@@ -1223,7 +1223,7 @@ export default function AdminPage({ user, profile }) {
           <tr>
             <th>Username</th>
             <th>Email</th>
-            <th>Phone</th>
+            <th>WhatsApp</th>
             <th>Role</th>
             <th>League</th>
             <th>Team</th>
@@ -1267,7 +1267,6 @@ export default function AdminPage({ user, profile }) {
                         const newLeagueId = e.target.value || null;
                         const targetLeague = leagues.find(l => l.id === newLeagueId);
                         
-                        // Check if league is full
                         if (newLeagueId) {
                           const currentCount = users.filter(user => user.league_id === newLeagueId).length;
                           if (targetLeague && currentCount >= (targetLeague.max_slots || 16)) {
@@ -1276,25 +1275,18 @@ export default function AdminPage({ user, profile }) {
                           }
                         }
                         
-                        // 1. Update user's league in profiles
                         await rFetch('PATCH', `profiles?id=eq.${u.id}`, { league_id: newLeagueId }, { Prefer: 'return=minimal' });
-                        
-                        // 2. Update user's league in users
                         await rFetch('PATCH', `users?id=eq.${u.id}`, { league_id: newLeagueId }, { Prefer: 'return=minimal' });
                         
-                        // 3. Handle team
                         const userTeam = teams.find(t => t.user_id === u.id);
                         if (userTeam) {
-                          // Update existing team's league
                           await rFetch('PATCH', `teams?id=eq.${userTeam.id}`, { league_id: newLeagueId }, { Prefer: 'return=minimal' });
                         } else if (newLeagueId) {
-                          // Auto-create team if user doesn't have one and is assigned to a league
-                          // When creating a team for a user
-                          const teamName = u.username;  // Use username directly
+                          const teamName = `${u.username || 'Player'}'s Team`;
                           await rFetch('POST', 'teams', {
-                            name: teamName,  // Username becomes team name
+                            name: teamName,
                             user_id: u.id,
-                            league_id: newLeagueId || u.league_id || null,
+                            league_id: newLeagueId,
                             is_active: true,
                             total_points: 0,
                             wins: 0,
@@ -1305,7 +1297,8 @@ export default function AdminPage({ user, profile }) {
                             goals_against: 0,
                             goal_difference: 0
                           }, { Prefer: 'return=minimal' });
-                          
+                        }
+                        
                         showMsg(`✅ ${u.username} assigned to ${targetLeague?.name || 'No League'}`);
                         loadAll();
                       }}
@@ -1343,7 +1336,6 @@ export default function AdminPage({ user, profile }) {
                   {/* Actions */}
                   <td>
                     <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                      {/* Block/Unblock */}
                       <button 
                         className={`btn btn-sm ${u.is_blocked ? 'btn-success' : 'btn-danger'}`}
                         onClick={() => blockUser(u.id, !u.is_blocked)}
@@ -1352,7 +1344,6 @@ export default function AdminPage({ user, profile }) {
                         {u.is_blocked ? '🔓' : '🚫'}
                       </button>
                       
-                      {/* Create Team (only if user doesn't have one) */}
                       {!userTeam && (
                         <button 
                           className="btn btn-sm btn-primary"
@@ -1383,7 +1374,6 @@ export default function AdminPage({ user, profile }) {
                         </button>
                       )}
                       
-                      {/* Edit Team Name */}
                       {userTeam && (
                         <button 
                           className="btn btn-sm btn-secondary"
