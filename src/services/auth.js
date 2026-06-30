@@ -5,7 +5,7 @@ export async function getProfile(uid) {
   if (!uid) return null;
   try {
     const token = sessionStore.session?.access_token ?? SUPABASE_KEY;
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/users?select=*&id=eq.${uid}&limit=1`, {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/profiles?select=*&id=eq.${uid}&limit=1`, {
       headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${token}`, Accept: 'application/json' },
     });
     if (!res.ok) return null;
@@ -31,10 +31,10 @@ export async function signIn(email, password) {
   }
 
   if (data.user) {
-    const existing = await apiFetch('GET', `users?id=eq.${data.user.id}&select=id,role&limit=1`);
+    const existing = await apiFetch('GET', `profiles?id=eq.${data.user.id}&select=id,role&limit=1`);
     if (!existing.data || existing.data.length === 0) {
       const username = data.user.user_metadata?.username || email.split('@')[0];
-      await apiFetch('POST', 'users', {
+      await apiFetch('POST', 'profiles', {
         id: data.user.id, email, username,
         whatsapp: data.user.user_metadata?.whatsapp || null,
         role: 'player',
@@ -64,7 +64,7 @@ export async function signUp(email, password, username, whatsapp) {
     throw new Error(msg);
   }
 
-  const user    = result.user || result;
+  const user = result.user || result;
   const session = result.session || null;
 
   if (session?.access_token) {
@@ -75,7 +75,7 @@ export async function signUp(email, password, username, whatsapp) {
   if (user?.id) {
     await new Promise((r) => setTimeout(r, 600));
     const token = sessionStore.session?.access_token ?? SUPABASE_KEY;
-    await fetch(`${SUPABASE_URL}/rest/v1/users`, {
+    await fetch(`${SUPABASE_URL}/rest/v1/profiles`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', apikey: SUPABASE_KEY,
         Authorization: `Bearer ${token}`, Prefer: 'resolution=ignore-duplicates,return=minimal' },
