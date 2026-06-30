@@ -818,131 +818,139 @@ useEffect(() => {
           )}
 
           {section === 'users' && (
-            <div className="card">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: 8 }}>
-                <div style={{ fontWeight: 700 }}>👥 Users ({users.length})</div>
-                <input className="form-input" placeholder="Search..." value={userSearch} onChange={e => setUserSearch(e.target.value)} style={{ width: 200 }} />
-              </div>
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      {['Username', 'Team Name', 'Email', 'Phone', 'Role', 'Status', 'League', 'Actions'].map(h => <th key={h}>{h}</th>)}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredUsers.map(u => {
-                      const userTeam = teams.find(t => t.user_id === u.id);
-                      return (
-                        <tr key={u.id}>
-                          <td style={{ fontWeight: 600 }}>{u.username || '—'}</td>
-                          <td>
-                            <input
-                              className="form-input"
-                              style={{ padding: '4px 8px', fontSize: '.78rem', minHeight: 'auto', width: '100%', maxWidth: '150px' }}
-                              value={userTeam?.name || ''}
-                              placeholder="Team name"
-                              onBlur={async (e) => {
-  const newName = e.target.value.trim();
-  if (!newName) return;
-  try {
-    if (userTeam) {
-      await rFetch('PATCH', `teams?id=eq.${userTeam.id}`, { name: newName }, { Prefer: 'return=minimal' });
-      showMsg(`✅ Team name updated to "${newName}"`, 'success');
-      loadAll();
-    } else {
-      await rFetch('POST', 'teams', {
-  user_id: u.id,
-  name: teamName,
-  league_id: leagueId,
-  total_points: 0,
-  wins: 0,
-  draws: 0,
-  losses: 0,
-  matches_played: 0,
-  goals_for: 0,
-  goals_against: 0,
-  goal_difference: 0,
-  is_active: true
-}, { Prefer: 'return=minimal' });
-showMsg(`✅ Team "${teamName}" created and assigned to league`, 'success');
-                              onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
-                            />
-                          </td>
-                          <td className="text-muted text-sm">{u.email || '—'}</td>
-                          <td className="text-muted text-sm">{u.phone || '—'}</td>
-                          <td>
-                            <span className={`badge ${u.role === 'admin' ? 'badge-gold' : 'badge-gray'}`}>
-                              {u.role || 'player'}
-                            </span>
-                          </td>
-                          <td>
-                            <span className={`badge ${u.is_blocked ? 'badge-red' : 'badge-green'}`}>
-                              {u.is_blocked ? 'Blocked' : 'Active'}
-                            </span>
-                          </td>
-                          <td>
-                            <select 
-                              className="form-select" 
-                              style={{ padding: '4px 8px', fontSize: '.78rem', minHeight: 'auto', width: '100%', maxWidth: '140px' }}
-                              value={userTeam?.league_id || ''}
-                              onChange={async (e) => {
-  const leagueId = e.target.value || null;
-  try {
-    if (userTeam) {
-      await rFetch('PATCH', `teams?id=eq.${userTeam.id}`, { league_id: leagueId }, { Prefer: 'return=minimal' });
-      showMsg(`✅ League updated for ${u.username}`, 'success');
-    } else if (leagueId) {
-      const teamName = u.username || 'Unknown';
-      const result = await rFetch('POST', 'teams', {
-  user_id: u.id,
-  name: teamName,
-  league_id: leagueId,
-  total_points: 0,
-  wins: 0,
-  draws: 0,
-  losses: 0,
-  matches_played: 0,
-  goals_for: 0,
-  goals_against: 0,
-  goal_difference: 0,
-  is_active: true
-}, { Prefer: 'return=representation' });
-if (result.ok) {
-  showMsg(`✅ Team "${teamName}" created and assigned to league`, 'success');
-} else {
-  showMsg('❌ Failed to create team', 'danger');
-}
-                            >
-                              <option value="">-- No League --</option>
-                              {leagues.map(l => (
-                                <option key={l.id} value={l.id}>
-                                  {l.country} – {l.name} (Div {l.tier})
-                                </option>
-                              ))}
-                            </select>
-                          </td>
-                          <td>
-                            {u.id !== user.id && (
-                              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                                {u.role !== 'admin'
-                                  ? <button className="btn btn-secondary btn-sm" onClick={() => setRole(u.id, 'admin')}>Make Admin</button>
-                                  : <button className="btn btn-secondary btn-sm" onClick={() => setRole(u.id, 'player')}>Demote</button>}
-                                <button className={`btn btn-sm ${u.is_blocked ? 'btn-success' : 'btn-danger'}`} 
-                                  onClick={() => blockUser(u.id, !u.is_blocked)}>
-                                  {u.is_blocked ? 'Unblock' : 'Block'}
-                                </button>
-                              </div>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
+  <div className="card">
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: 8 }}>
+      <div style={{ fontWeight: 700 }}>👥 Users ({users.length})</div>
+      <input className="form-input" placeholder="Search..." value={userSearch} onChange={e => setUserSearch(e.target.value)} style={{ width: 200 }} />
+    </div>
+    <div className="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            {['Username', 'Team Name', 'Email', 'Phone', 'Role', 'Status', 'League', 'Actions'].map(h => <th key={h}>{h}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {filteredUsers.map(u => {
+            const userTeam = teams.find(t => t.user_id === u.id);
+            return (
+              <tr key={u.id}>
+                <td style={{ fontWeight: 600 }}>{u.username || '—'}</td>
+                <td>
+                  <input
+                    className="form-input"
+                    style={{ padding: '4px 8px', fontSize: '.78rem', minHeight: 'auto', width: '100%', maxWidth: '150px' }}
+                    value={userTeam?.name || ''}
+                    placeholder="Team name"
+                    onBlur={async (e) => {
+                      const newName = e.target.value.trim();
+                      if (!newName) return;
+                      try {
+                        if (userTeam) {
+                          await rFetch('PATCH', `teams?id=eq.${userTeam.id}`, { name: newName }, { Prefer: 'return=minimal' });
+                          showMsg(`✅ Team name updated to "${newName}"`, 'success');
+                          loadAll();
+                        } else {
+                          await rFetch('POST', 'teams', {
+                            user_id: u.id,
+                            name: newName,
+                            league_id: null,
+                            total_points: 0,
+                            wins: 0,
+                            draws: 0,
+                            losses: 0,
+                            matches_played: 0,
+                            goals_for: 0,
+                            goals_against: 0,
+                            goal_difference: 0,
+                            is_active: true
+                          }, { Prefer: 'return=minimal' });
+                          showMsg(`✅ Team "${newName}" created for ${u.username}`, 'success');
+                          loadAll();
+                        }
+                      } catch (err) {
+                        showMsg('❌ Error updating team: ' + err.message, 'danger');
+                      }
+                    }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                  />
+                </td>
+                <td className="text-muted text-sm">{u.email || '—'}</td>
+                <td className="text-muted text-sm">{u.phone || '—'}</td>
+                <td>
+                  <span className={`badge ${u.role === 'admin' ? 'badge-gold' : 'badge-gray'}`}>
+                    {u.role || 'player'}
+                  </span>
+                </td>
+                <td>
+                  <span className={`badge ${u.is_blocked ? 'badge-red' : 'badge-green'}`}>
+                    {u.is_blocked ? 'Blocked' : 'Active'}
+                  </span>
+                </td>
+                <td>
+                  <select 
+                    className="form-select" 
+                    style={{ padding: '4px 8px', fontSize: '.78rem', minHeight: 'auto', width: '100%', maxWidth: '140px' }}
+                    value={userTeam?.league_id || ''}
+                    onChange={async (e) => {
+                      const leagueId = e.target.value || null;
+                      try {
+                        if (userTeam) {
+                          await rFetch('PATCH', `teams?id=eq.${userTeam.id}`, { league_id: leagueId }, { Prefer: 'return=minimal' });
+                          showMsg(`✅ League updated for ${u.username}`, 'success');
+                        } else if (leagueId) {
+                          const teamName = u.username || 'Unknown';
+                          await rFetch('POST', 'teams', {
+                            user_id: u.id,
+                            name: teamName,
+                            league_id: leagueId,
+                            total_points: 0,
+                            wins: 0,
+                            draws: 0,
+                            losses: 0,
+                            matches_played: 0,
+                            goals_for: 0,
+                            goals_against: 0,
+                            goal_difference: 0,
+                            is_active: true
+                          }, { Prefer: 'return=minimal' });
+                          showMsg(`✅ Team "${teamName}" created and assigned to league`, 'success');
+                        }
+                        loadAll();
+                      } catch (err) {
+                        showMsg('❌ Error: ' + err.message, 'danger');
+                      }
+                    }}
+                  >
+                    <option value="">-- No League --</option>
+                    {leagues.map(l => (
+                      <option key={l.id} value={l.id}>
+                        {l.country} – {l.name} (Div {l.tier})
+                      </option>
+                    ))}
+                  </select>
+                </td>
+                <td>
+                  {u.id !== user.id && (
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                      {u.role !== 'admin'
+                        ? <button className="btn btn-secondary btn-sm" onClick={() => setRole(u.id, 'admin')}>Make Admin</button>
+                        : <button className="btn btn-secondary btn-sm" onClick={() => setRole(u.id, 'player')}>Demote</button>}
+                      <button className={`btn btn-sm ${u.is_blocked ? 'btn-success' : 'btn-danger'}`} 
+                        onClick={() => blockUser(u.id, !u.is_blocked)}>
+                        {u.is_blocked ? 'Unblock' : 'Block'}
+                      </button>
+                    </div>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  </div>
+)}
 
           {section === 'logs' && (
             <div className="card">
