@@ -16,7 +16,7 @@ const SECTIONS = [
 ];
 
 export default function AdminPage({ user, profile }) {
-  // ========== ALL useState DECLARATIONS ==========
+  // ========== STATE DECLARATIONS ==========
   const [section, setSection] = useState('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [msg, setMsg] = useState('');
@@ -39,6 +39,7 @@ export default function AdminPage({ user, profile }) {
   const [annMessage, setAnnMessage] = useState('');
   const [editingAnnId, setEditingAnnId] = useState(null);
 
+  // Form States
   const [nlName, setNlName] = useState('');
   const [nlCountry, setNlCountry] = useState('');
   const [nlTier, setNlTier] = useState(1);
@@ -55,62 +56,62 @@ export default function AdminPage({ user, profile }) {
   const [ppChange, setPpChange] = useState(0);
   const [ppReason, setPpReason] = useState('');
   const [ppSearch, setPpSearch] = useState('');
-  const [seasonFilter, setSeasonFilter] = useState('');
-  const uniqueSeasons = [...new Set(leagues.map(l => l.season).filter(Boolean))];
 
-  // ========== PASTE THE CODE HERE ==========
-  // Add this helper near the top of your component
+  // Filter States
+  const [seasonFilter, setSeasonFilter] = useState('');
+
+  // ========== REAL LEAGUE SLOTS DATA ==========
   const REAL_LEAGUE_SLOTS = {
-    'English Premier League': 20,
-    'La Liga': 20,
-    'Serie A': 20,
-    'Bundesliga': 18,
-    'Ligue 1': 18,
-    'Eredivisie': 18,
-    'Primeira Liga': 18,
-    'Scottish Premiership': 12,
-    'MLS': 29,
-    'Liga MX': 18,
-    'Argentine Primera División': 28,
-    'Brazilian Série A': 20,
-    'J1 League': 18,
-    'K League 1': 12,
-    'Saudi Pro League': 16,
-    'UAE Pro League': 14,
-    'Qatar Stars League': 12,
-    'A-League Men': 12,
-    'Chinese Super League': 16,
-    'Russian Premier League': 16,
-    'Turkish Süper Lig': 20,
-    'Belgian Pro League': 16,
-    'Swiss Super League': 12,
-    'Austrian Bundesliga': 12,
-    'Greek Super League': 14,
-    'Danish Superliga': 12,
-    'Norwegian Eliteserien': 16,
-    'Swedish Allsvenskan': 16,
-    'Finnish Veikkausliiga': 12,
-    'Irish Premier Division': 10,
-    'Welsh Premier League': 12,
-    'Northern Irish Premiership': 12,
+    'English Premier League': { slots: 20, season: '2024-25' },
+    'La Liga': { slots: 20, season: '2024-25' },
+    'Serie A': { slots: 20, season: '2024-25' },
+    'Bundesliga': { slots: 18, season: '2024-25' },
+    'Ligue 1': { slots: 18, season: '2024-25' },
+    'Eredivisie': { slots: 18, season: '2024-25' },
+    'Primeira Liga': { slots: 18, season: '2024-25' },
+    'Scottish Premiership': { slots: 12, season: '2024-25' },
+    'MLS': { slots: 29, season: '2025' },
+    'Liga MX': { slots: 18, season: '2024-25' },
+    'Argentine Primera División': { slots: 28, season: '2025' },
+    'Brazilian Série A': { slots: 20, season: '2025' },
+    'J1 League': { slots: 18, season: '2025' },
+    'K League 1': { slots: 12, season: '2025' },
+    'Saudi Pro League': { slots: 16, season: '2024-25' },
+    'UAE Pro League': { slots: 14, season: '2024-25' },
+    'Qatar Stars League': { slots: 12, season: '2024-25' },
+    'A-League Men': { slots: 12, season: '2024-25' },
+    'Chinese Super League': { slots: 16, season: '2025' },
+    'Russian Premier League': { slots: 16, season: '2024-25' },
+    'Turkish Süper Lig': { slots: 20, season: '2024-25' },
+    'Belgian Pro League': { slots: 16, season: '2024-25' },
+    'Swiss Super League': { slots: 12, season: '2024-25' },
+    'Austrian Bundesliga': { slots: 12, season: '2024-25' },
+    'Greek Super League': { slots: 14, season: '2024-25' },
+    'Danish Superliga': { slots: 12, season: '2024-25' },
+    'Norwegian Eliteserien': { slots: 16, season: '2025' },
+    'Swedish Allsvenskan': { slots: 16, season: '2025' },
+    'Finnish Veikkausliiga': { slots: 12, season: '2025' },
+    'Irish Premier Division': { slots: 10, season: '2025' },
+    'Welsh Premier League': { slots: 12, season: '2024-25' },
+    'Northern Irish Premiership': { slots: 12, season: '2024-25' },
   };
 
-  // Update the input to auto-fill slots when league name is entered
+  // ========== HELPER FUNCTIONS ==========
   function handleLeagueNameChange(name) {
     setNlName(name);
-    // Auto-fill slots if the league name matches a known league
-    const slots = REAL_LEAGUE_SLOTS[name];
-    if (slots) {
-      setNlSlots(slots);
+    const leagueData = REAL_LEAGUE_SLOTS[name];
+    if (leagueData) {
+      setNlSlots(leagueData.slots);
+      setNlSeason(leagueData.season);
     }
   }
-  // ========== END OF PASTED CODE ==========
 
-  // ========== CLEAN CONSOLE LOGGING ==========
-  const logger = {
-    // ... rest of your code continues here
+  // ========== COMPUTED VALUES ==========
+  const totalLeagueSlotsCapacity = leagues.reduce((acc, curr) => acc + (parseInt(curr.slots) || 0), 0);
+  const uniqueSeasons = [...new Set(leagues.map(l => l.season).filter(Boolean))];
+  const filteredLeagues = leagues.filter(l => !seasonFilter || l.season === seasonFilter);
 
-  // ========== CLEAN CONSOLE LOGGING ==========
+  // ========== LOGGER ==========
   const logger = {
     info: (message, data = null) => {
       console.groupCollapsed(`ℹ️ [Admin] ${message}`);
@@ -130,6 +131,7 @@ export default function AdminPage({ user, profile }) {
     }
   };
 
+  // ========== API FUNCTIONS ==========
   async function rFetch(method, path, body, ex = {}) {
     try {
       const r = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
@@ -168,6 +170,7 @@ export default function AdminPage({ user, profile }) {
     setTimeout(() => setMsg(''), 5000);
   }
 
+  // ========== LOAD FUNCTIONS ==========
   const loadAnnouncements = useCallback(async () => {
     try {
       const r = await apiFetch('GET', 'announcements?select=*&order=created_at.desc');
@@ -258,9 +261,6 @@ export default function AdminPage({ user, profile }) {
     }
   }, [profile, loadAll, loadAnnouncements]);
 
-  // ========== CALCULATE REAL LEAGUE CAPACITY ==========
-  const totalLeagueSlotsCapacity = leagues.reduce((acc, curr) => acc + (parseInt(curr.slots) || 0), 0);
-
   async function loadPointsHistory() {
     const r = await apiFetch('GET',
       'player_points_history?select=*,admin:admin_id(username),player:player_id(username)&order=created_at.desc&limit=100'
@@ -268,85 +268,36 @@ export default function AdminPage({ user, profile }) {
     setPointsHistory(Array.isArray(r.data) ? r.data : []);
   }
 
-  // ========== ANNOUNCEMENT FUNCTIONS ==========
-  async function saveAnnouncement() {
-    if (!annMessage.trim()) { showMsg('Announcement text is required', 'danger'); return; }
-    
-    if (editingAnnId) {
-      const r = await rFetch('PATCH', `announcements?id=eq.${editingAnnId}`, { message: annMessage });
-      if (r.ok) {
-        showMsg('📢 Announcement updated successfully!');
-        setEditingAnnId(null);
-        setAnnMessage('');
-        loadAnnouncements();
-        logAction('edit_announcement', { id: editingAnnId });
-      } else {
-        showMsg('Failed to update announcement', 'danger');
-      }
-    } else {
-      const r = await rFetch('POST', 'announcements', { message: annMessage, created_by: user.id });
-      if (r.ok) {
-        showMsg('📢 Announcement broadcasted successfully!');
-        setAnnMessage('');
-        loadAnnouncements();
-        logAction('create_announcement');
-        logger.success('New announcement created', { message: annMessage });
-      } else {
-        showMsg('Failed to post announcement', 'danger');
-      }
-    }
-  }
-
-  async function deleteAnnouncement(id) {
-    if (!window.confirm('Are you sure you want to delete this announcement?')) return;
-    const r = await rFetch('DELETE', `announcements?id=eq.${id}`);
-    if (r.ok) {
-      showMsg('❌ Announcement deleted');
-      loadAnnouncements();
-      logAction('delete_announcement', { id });
-    } else {
-      showMsg('Failed to delete announcement', 'danger');
-    }
-  }
-
-  function handleEditAnnouncement(ann) {
-    setEditingAnnId(ann.id);
-    setAnnMessage(ann.message);
-  }
-
   // ========== LEAGUE FUNCTIONS ==========
-async function createNewLeague() {
-  if (!nlName || !nlCountry) { 
-    showMsg('Please fill in all league fields', 'danger'); 
-    return; 
+  async function createNewLeague() {
+    if (!nlName || !nlCountry) { 
+      showMsg('Please fill in all league fields', 'danger'); 
+      return; 
+    }
+    
+    const slotCount = REAL_LEAGUE_SLOTS[nlName]?.slots || parseInt(nlSlots) || 16;
+    
+    const r = await rFetch('POST', 'leagues', {
+      name: nlName,
+      country: nlCountry,
+      tier: parseInt(nlTier) || 1,
+      slots: slotCount,
+      season: nlSeason || '2024-25'
+    });
+    
+    if (r.ok) {
+      showMsg(`🏟️ ${nlName} created successfully with ${slotCount} slots!`);
+      setNlName('');
+      setNlCountry('');
+      setNlTier(1);
+      setNlSlots(16);
+      setNlSeason('2024-25');
+      loadAll();
+      logAction('create_league', { name: nlName, country: nlCountry, slots: slotCount, season: nlSeason });
+    } else {
+      showMsg('Failed to create league: ' + (r.data?.message || 'Unknown error'), 'danger');
+    }
   }
-  
-  // Get real slot count if available, otherwise use the input value
-  const slotCount = REAL_LEAGUE_SLOTS[nlName] || parseInt(nlSlots) || 16;
-  
-  const r = await rFetch('POST', 'leagues', {
-    name: nlName,
-    country: nlCountry,
-    tier: parseInt(nlTier) || 1,
-    slots: slotCount,
-    season: nlSeason || '2024-25'  // Now this will work!
-  });
-  
-  if (r.ok) {
-    showMsg(`🏟️ ${nlName} created successfully with ${slotCount} slots!`);
-    setNlName('');
-    setNlCountry('');
-    setNlTier(1);
-    setNlSlots(16);
-    setNlSeason('2024-25');
-    loadAll();
-    logAction('create_league', { name: nlName, country: nlCountry, slots: slotCount, season: nlSeason });
-    logger.success('League created', { name: nlName, country: nlCountry, slots: slotCount, season: nlSeason });
-  } else {
-    showMsg('Failed to create league: ' + (r.data?.message || 'Unknown error'), 'danger');
-    logger.error('Failed to create league', r.data);
-  }
-}
 
   // ========== EUROPEAN COMPETITION FUNCTIONS ==========
   async function createEuropeanCompetition() {
@@ -394,6 +345,52 @@ async function createNewLeague() {
     }
   }
 
+  // ========== ANNOUNCEMENT FUNCTIONS ==========
+  async function saveAnnouncement() {
+    if (!annMessage.trim()) { showMsg('Announcement text is required', 'danger'); return; }
+    
+    if (editingAnnId) {
+      const r = await rFetch('PATCH', `announcements?id=eq.${editingAnnId}`, { message: annMessage });
+      if (r.ok) {
+        showMsg('📢 Announcement updated successfully!');
+        setEditingAnnId(null);
+        setAnnMessage('');
+        loadAnnouncements();
+        logAction('edit_announcement', { id: editingAnnId });
+      } else {
+        showMsg('Failed to update announcement', 'danger');
+      }
+    } else {
+      const r = await rFetch('POST', 'announcements', { message: annMessage, created_by: user.id });
+      if (r.ok) {
+        showMsg('📢 Announcement broadcasted successfully!');
+        setAnnMessage('');
+        loadAnnouncements();
+        logAction('create_announcement');
+      } else {
+        showMsg('Failed to post announcement', 'danger');
+      }
+    }
+  }
+
+  async function deleteAnnouncement(id) {
+    if (!window.confirm('Are you sure you want to delete this announcement?')) return;
+    const r = await rFetch('DELETE', `announcements?id=eq.${id}`);
+    if (r.ok) {
+      showMsg('❌ Announcement deleted');
+      loadAnnouncements();
+      logAction('delete_announcement', { id });
+    } else {
+      showMsg('Failed to delete announcement', 'danger');
+    }
+  }
+
+  function handleEditAnnouncement(ann) {
+    setEditingAnnId(ann.id);
+    setAnnMessage(ann.message);
+  }
+
+  // ========== OTHER FUNCTIONS ==========
   async function assignLeagueToUser(uid, leagueId) {
     const targetLeague = leagueId === '' ? null : leagueId;
     
@@ -622,6 +619,7 @@ async function createNewLeague() {
     loadAll();
   }
 
+  // ========== RENDER ==========
   if (profile?.role !== 'admin') return (
     <div className="card empty-state"><div className="empty-icon">🔒</div>Admin access required</div>
   );
@@ -958,96 +956,95 @@ async function createNewLeague() {
           )}
 
           {/* LEAGUES */}
-{section === 'leagues' && (
-  <div className="card">
-    <div style={{ fontWeight: 700, marginBottom: '1rem', fontSize: '1.1rem' }}>🏟️ League Management</div>
-    
-    {/* ========== STEP 6: SEASON FILTER ========== */}
-    {/* Add this right after the title, before the create form */}
-    <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', alignItems: 'center' }}>
-      <label style={{ fontSize: '0.9rem', fontWeight: 600 }}>Filter by Season:</label>
-      <select 
-        className="form-select" 
-        value={seasonFilter} 
-        onChange={e => setSeasonFilter(e.target.value)}
-        style={{ minWidth: '150px' }}
-      >
-        <option value="">All Seasons</option>
-        {uniqueSeasons.map(s => (
-          <option key={s} value={s}>{s}</option>
-        ))}
-      </select>
-    </div>
-    {/* ========== END OF STEP 6 ========== */}
+          {section === 'leagues' && (
+            <div className="card">
+              <div style={{ fontWeight: 700, marginBottom: '1rem', fontSize: '1.1rem' }}>🏟️ League Management</div>
+              
+              {/* Season Filter */}
+              <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', alignItems: 'center' }}>
+                <label style={{ fontSize: '0.9rem', fontWeight: 600 }}>Filter by Season:</label>
+                <select 
+                  className="form-select" 
+                  value={seasonFilter} 
+                  onChange={e => setSeasonFilter(e.target.value)}
+                  style={{ minWidth: '150px' }}
+                >
+                  <option value="">All Seasons</option>
+                  {uniqueSeasons.map(s => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              </div>
 
-    {/* Create League Form */}
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.5rem', marginBottom: '1rem' }}>
-      <input 
-        className="form-input" 
-        placeholder="League Name" 
-        value={nlName} 
-        onChange={e => handleLeagueNameChange(e.target.value)} 
-      />
-      <input 
-        className="form-input" 
-        placeholder="Country" 
-        value={nlCountry} 
-        onChange={e => setNlCountry(e.target.value)} 
-      />
-      <input 
-        className="form-input" 
-        type="number" 
-        placeholder="Tier" 
-        value={nlTier} 
-        onChange={e => setNlTier(parseInt(e.target.value) || 1)} 
-      />
-      <input 
-        className="form-input" 
-        type="number" 
-        placeholder="Slots" 
-        value={nlSlots} 
-        onChange={e => setNlSlots(parseInt(e.target.value) || 16)} 
-      />
-      <input 
-        className="form-input" 
-        placeholder="Season (e.g. 2024-25)" 
-        value={nlSeason} 
-        onChange={e => setNlSeason(e.target.value)} 
-      />
-    </div>
-    <button className="btn btn-primary" onClick={createNewLeague} style={{ marginBottom: '1rem' }}>➕ Create League</button>
+              {/* Create League Form */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.5rem', marginBottom: '1rem' }}>
+                <input 
+                  className="form-input" 
+                  placeholder="League Name" 
+                  value={nlName} 
+                  onChange={e => handleLeagueNameChange(e.target.value)} 
+                />
+                <input 
+                  className="form-input" 
+                  placeholder="Country" 
+                  value={nlCountry} 
+                  onChange={e => setNlCountry(e.target.value)} 
+                />
+                <input 
+                  className="form-input" 
+                  type="number" 
+                  placeholder="Tier" 
+                  value={nlTier} 
+                  onChange={e => setNlTier(parseInt(e.target.value) || 1)} 
+                />
+                <input 
+                  className="form-input" 
+                  type="number" 
+                  placeholder="Slots" 
+                  value={nlSlots} 
+                  onChange={e => setNlSlots(parseInt(e.target.value) || 16)} 
+                />
+                <input 
+                  className="form-input" 
+                  placeholder="Season (e.g. 2024-25)" 
+                  value={nlSeason} 
+                  onChange={e => setNlSeason(e.target.value)} 
+                />
+              </div>
+              <button className="btn btn-primary" onClick={createNewLeague} style={{ marginBottom: '1rem' }}>➕ Create League</button>
 
-    {/* League Table */}
-    <div className="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Country</th>
-            <th>Tier</th>
-            <th>Slots</th>
-            <th>Season</th>
-          </tr>
-        </thead>
-        <tbody>
-          {filteredLeagues.length === 0 ? (
-            <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--muted)', padding: '2rem' }}>No leagues configured</td></tr>
-          ) : (
-            filteredLeagues.map(l => (
-              <tr key={l.id}>
-                <td style={{ fontWeight: 600 }}>{l.name}</td>
-                <td>{l.country}</td>
-                <td>{l.tier}</td>
-                <td style={{ color: 'var(--blue)', fontWeight: 'bold' }}>{l.slots || 16}</td>
-                <td>{l.season || '—'}</td>
-              </tr>
-            ))
+              {/* League Table */}
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Country</th>
+                      <th>Tier</th>
+                      <th>Slots</th>
+                      <th>Season</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredLeagues.length === 0 ? (
+                      <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--muted)', padding: '2rem' }}>No leagues configured</td></tr>
+                    ) : (
+                      filteredLeagues.map(l => (
+                        <tr key={l.id}>
+                          <td style={{ fontWeight: 600 }}>{l.name}</td>
+                          <td>{l.country}</td>
+                          <td>{l.tier}</td>
+                          <td style={{ color: 'var(--blue)', fontWeight: 'bold' }}>{l.slots || 16}</td>
+                          <td>{l.season || '—'}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           )}
-        </tbody>
-      </table>
-    </div>
-  </div>
-)}
+
           {/* FIXTURES */}
           {section === 'fixtures' && (
             <div className="card">
