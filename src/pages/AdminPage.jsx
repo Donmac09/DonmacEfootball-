@@ -33,6 +33,7 @@ export default function AdminPage({ user, profile }) {
   const [genLeague, setGenLeague] = useState('');
   const [userSearch, setUserSearch] = useState('');
   const [fixtureList, setFixtureList] = useState([]);
+  const [adjTeamSearch, setAdjTeamSearch] = useState('');
 
   const [announcements, setAnnouncements] = useState([]);
   const [annMessage, setAnnMessage] = useState('');
@@ -523,7 +524,6 @@ export default function AdminPage({ user, profile }) {
   }));
   
   const allFixtures = [...fx, ...ret];
-  
   const result = await rFetch('POST', 'fixtures', allFixtures, { Prefer: 'return=minimal' });
   
   if (result.ok) {
@@ -595,18 +595,27 @@ export default function AdminPage({ user, profile }) {
   }
 
   async function adjustTeamPoints() {
-    if (!adjTeam) { showMsg('Select a team', 'danger'); return; }
-    const r = await apiFetch('GET', `teams?id=eq.${adjTeam}&select=total_points`);
-    const cur = Array.isArray(r.data) && r.data[0] ? r.data[0].total_points || 0 : 0;
-    const np = Math.max(0, cur + parseInt(adjPts || 0));
-    await rFetch('PATCH', `teams?id=eq.${adjTeam}`, { total_points: np }, { Prefer: 'return=minimal' });
-    await logAction('adjust_team_points', { team_id: adjTeam, change: adjPts, reason: adjReason });
-    showMsg(`✅ Team points: ${cur} → ${np}`);
+  if (!adjTeam) { showMsg('Select a team', 'danger'); return; }
+  
+  const change = parseInt(adjPts || 0);
+  if (change === 0) { showMsg('Enter a non-zero points change', 'danger'); return; }
+  
+  const r = await apiFetch('GET', `teams?id=eq.${adjTeam}&select=total_points`);
+  const cur = Array.isArray(r.data) && r.data[0] ? r.data[0].total_points || 0 : 0;
+  const np = Math.max(0, cur + change);
+  
+  const result = await rFetch('PATCH', `teams?id=eq.${adjTeam}`, { total_points: np }, { Prefer: 'return=minimal' });
+  
+  if (result.ok) {
+    showMsg(`✅ Team points ${change > 0 ? 'added' : 'deducted'}: ${cur} → ${np}`, change > 0 ? 'success' : 'danger');
+    await logAction('adjust_team_points', { team_id: adjTeam, change, reason: adjReason, before: cur, after: np });
     setAdjPts(0);
     setAdjReason('');
     loadAll();
+  } else {
+    showMsg(`❌ Failed to update points: ${result.data?.message || 'Unknown error'}`, 'danger');
   }
-
+}
   if (profile?.role !== 'admin') return (
     <div className="card empty-state"><div className="empty-icon">🔒</div>Admin access required</div>
   );
@@ -804,142 +813,144 @@ export default function AdminPage({ user, profile }) {
           )}
 
           {/* PLAYER POINTS */}
-          {section === 'playerpoints' && (
-            <div>
-              <div className="card" style={{ marginBottom: '1rem' }}>
-                <div style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '1rem', color: 'var(--yellow)' }}>
-                  🎮 Add / Deduct Player Points (Free Play / Matchmaking)
-                </div>
-                <div className="alert alert-info" style={{ marginBottom: '1rem' }}>
-                  These points affect the <strong>Match Search leaderboard</strong> — separate from league team points.
-                </div>
+{section === 'playerpoints' && (
+  <div>
+    <div className="card" style={{ marginBottom: '1rem' }}>
+      <div style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '1rem', color: 'var(--yellow)' }}>
+        🎮 Add / Deduct Player Points (Free Play / Matchmaking)
+      </div>
+      <div className="alert alert-info" style={{ marginBottom: '1rem' }}>
+        These points affect the <strong>Match Search leaderboard</strong> — separate from league team points.
+      </div>
 
-                <div className="grid-2">
-                  <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                    <label className="form-label">Search & Select Player</label>
-                    <input className="form-input" placeholder="Type to search player..." value={ppSearch} onChange={e => setPpSearch(e.target.value)} style={{ marginBottom: 8 }} />
-                    <select className="form-select" value={ppPlayer} onChange={e => setPpPlayer(e.target.value)} size={Math.min(6, uniqueFilteredLb.length + 1)} style={{ height: 'auto', minHeight: 44 }}>
-                      <option value="">-- Select a player --</option>
-                      {uniqueFilteredLb.map(r => (
-                        <option key={r.user_id} value={r.user_id}>
-                          {r.users?.username || r.users?.email || r.user_id} — {r.points || 0} pts ({r.wins || 0}W {r.draws || 0}D {r.losses || 0}L)
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+      <div className="grid-2">
+        <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+          <label className="form-label">Search & Select Player</label>
+          <input className="form-input" placeholder="Type to search player..." value={ppSearch} onChange={e => setPpSearch(e.target.value)} style={{ marginBottom: 8 }} />
+          <select className="form-select" value={ppPlayer} onChange={e => setPpPlayer(e.target.value)} size={Math.min(6, uniqueFilteredLb.length + 1)} style={{ height: 'auto', minHeight: 44 }}>
+            <option value="">-- Select a player --</option>
+            {uniqueFilteredLb.map(r => (
+              <option key={r.user_id} value={r.user_id}>
+                {/* Show username instead of user_id */}
+                {r.users?.username || r.username || 'Unknown Player'} — {r.points || 0} pts ({r.wins || 0}W {r.draws || 0}D {r.losses || 0}L)
+              </option>
+            ))}
+          </select>
+        </div>
 
-                  <div className="form-group">
-                    <label className="form-label">Points Change</label>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      {[-10, -5, -3, -1].map(v => (
-                        <button key={v} className="btn btn-danger btn-sm" onClick={() => setPpChange(v)} style={{ flex: 1 }}>{v}</button>
-                      ))}
+        <div className="form-group">
+          <label className="form-label">Points Change</label>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {[-10, -5, -3, -1].map(v => (
+              <button key={v} className="btn btn-danger btn-sm" onClick={() => setPpChange(v)} style={{ flex: 1 }}>{v}</button>
+            ))}
+          </div>
+          <input className="form-input" type="number" value={ppChange} onChange={e => setPpChange(e.target.value)} placeholder="+5 or -3" style={{ marginTop: 6 }} />
+          <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+            {[1, 3, 5, 10].map(v => (
+              <button key={v} className="btn btn-success btn-sm" onClick={() => setPpChange(v)} style={{ flex: 1 }}>+{v}</button>
+            ))}
+          </div>
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">Reason (Required)</label>
+          <textarea className="form-input" value={ppReason} onChange={e => setPpReason(e.target.value)} placeholder="e.g. Disconnected, rule violation..." rows={4} />
+        </div>
+      </div>
+
+      {ppPlayer && ppChange !== 0 && (() => {
+        const row = leaderboard.find(r => r.user_id === ppPlayer);
+        const before = row?.points || 0;
+        const after = Math.max(0, before + parseInt(ppChange || 0));
+        const isAdd = parseInt(ppChange) > 0;
+        const playerName = row?.users?.username || row?.username || 'Player';
+        return (
+          <div className={`alert ${isAdd ? 'alert-success' : 'alert-danger'}`} style={{ marginBottom: '1rem' }}>
+            <strong>{playerName}</strong>: {before} pts → <strong>{after} pts</strong>
+            {' '}({isAdd ? '+' : ''}{ppChange}) {ppReason && `— "${ppReason}"`}
+          </div>
+        );
+      })()}
+
+      <button className="btn btn-primary" onClick={adjustPlayerPoints} style={{ minWidth: 200 }}>
+        ⚡ Apply Points Change
+      </button>
+    </div>
+
+    <div className="card" style={{ marginBottom: '1rem' }}>
+      <div style={{ fontWeight: 700, marginBottom: '1rem' }}>🏆 Current Leaderboard</div>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              {['#', 'Player', 'MP', 'W', 'D', 'L', 'GF', 'GA', 'GD', 'Pts', 'Actions'].map(h => <th key={h}>{h}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {leaderboard.length === 0 ?
+              <tr><td colSpan={11} style={{ textAlign: 'center', color: 'var(--muted)', padding: '2rem' }}>No players yet</td></tr> :
+              leaderboard.map((r, i) => (
+                <tr key={r.user_id} style={{ background: ppPlayer === r.user_id ? 'rgba(255,210,0,0.06)' : 'transparent' }}>
+                  <td className={`pos ${i === 0 ? 'pos-1' : i === 1 ? 'pos-2' : i === 2 ? 'pos-3' : ''}`}>{i + 1}</td>
+                  <td style={{ fontWeight: 600 }}>{r.users?.username || r.username || '—'}</td>
+                  <td>{r.matches_played || 0}</td>
+                  <td style={{ color: 'var(--green)' }}>{r.wins || 0}</td>
+                  <td style={{ color: 'var(--muted)' }}>{r.draws || 0}</td>
+                  <td style={{ color: 'var(--red)' }}>{r.losses || 0}</td>
+                  <td>{r.goals_for || 0}</td>
+                  <td>{r.goals_against || 0}</td>
+                  <td>{r.goal_difference || 0}</td>
+                  <td className="pts">{r.points || 0}</td>
+                  <td>
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <button className="btn btn-success btn-sm" onClick={() => { setPpPlayer(r.user_id); setPpChange(3); }}>+3</button>
+                      <button className="btn btn-danger btn-sm" onClick={() => { setPpPlayer(r.user_id); setPpChange(-3); }}>-3</button>
                     </div>
-                    <input className="form-input" type="number" value={ppChange} onChange={e => setPpChange(e.target.value)} placeholder="+5 or -3" style={{ marginTop: 6 }} />
-                    <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-                      {[1, 3, 5, 10].map(v => (
-                        <button key={v} className="btn btn-success btn-sm" onClick={() => setPpChange(v)} style={{ flex: 1 }}>+{v}</button>
-                      ))}
-                    </div>
-                  </div>
+                  </td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
 
-                  <div className="form-group">
-                    <label className="form-label">Reason (Required)</label>
-                    <textarea className="form-input" value={ppReason} onChange={e => setPpReason(e.target.value)} placeholder="e.g. Disconnected, rule violation..." rows={4} />
-                  </div>
-                </div>
-
-                {ppPlayer && ppChange !== 0 && (() => {
-                  const row = leaderboard.find(r => r.user_id === ppPlayer);
-                  const before = row?.points || 0;
-                  const after = Math.max(0, before + parseInt(ppChange || 0));
-                  const isAdd = parseInt(ppChange) > 0;
-                  return (
-                    <div className={`alert ${isAdd ? 'alert-success' : 'alert-danger'}`} style={{ marginBottom: '1rem' }}>
-                      <strong>{row?.users?.username || 'Player'}</strong>: {before} pts → <strong>{after} pts</strong>
-                      {' '}({isAdd ? '+' : ''}{ppChange}) {ppReason && `— "${ppReason}"`}
-                    </div>
-                  );
-                })()}
-
-                <button className="btn btn-primary" onClick={adjustPlayerPoints} style={{ minWidth: 200 }}>
-                  ⚡ Apply Points Change
-                </button>
-              </div>
-
-              <div className="card" style={{ marginBottom: '1rem' }}>
-                <div style={{ fontWeight: 700, marginBottom: '1rem' }}>🏆 Current Leaderboard</div>
-                <div className="table-wrap">
-                  <table>
-                    <thead>
-                      <tr>
-                        {['#', 'Player', 'MP', 'W', 'D', 'L', 'GF', 'GA', 'GD', 'Pts', 'Actions'].map(h => <th key={h}>{h}</th>)}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {leaderboard.length === 0 ?
-                        <tr><td colSpan={11} style={{ textAlign: 'center', color: 'var(--muted)', padding: '2rem' }}>No players yet</td></tr> :
-                        leaderboard.map((r, i) => (
-                          <tr key={r.user_id} style={{ background: ppPlayer === r.user_id ? 'rgba(255,210,0,0.06)' : 'transparent' }}>
-                            <td className={`pos ${i === 0 ? 'pos-1' : i === 1 ? 'pos-2' : i === 2 ? 'pos-3' : ''}`}>{i + 1}</td>
-                            <td style={{ fontWeight: 600 }}>{r.users?.username || '—'}</td>
-                            <td>{r.matches_played || 0}</td>
-                            <td style={{ color: 'var(--green)' }}>{r.wins || 0}</td>
-                            <td style={{ color: 'var(--muted)' }}>{r.draws || 0}</td>
-                            <td style={{ color: 'var(--red)' }}>{r.losses || 0}</td>
-                            <td>{r.goals_for || 0}</td>
-                            <td>{r.goals_against || 0}</td>
-                            <td>{r.goal_difference || 0}</td>
-                            <td className="pts">{r.points || 0}</td>
-                            <td>
-                              <div style={{ display: 'flex', gap: 4 }}>
-                                <button className="btn btn-success btn-sm" onClick={() => { setPpPlayer(r.user_id); setPpChange(3); }}>+3</button>
-                                <button className="btn btn-danger btn-sm" onClick={() => { setPpPlayer(r.user_id); setPpChange(-3); }}>-3</button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              <div className="card">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: 8 }}>
-                  <div style={{ fontWeight: 700 }}>📋 Points Adjustment History</div>
-                  <button className="btn btn-secondary btn-sm" onClick={loadPointsHistory}>↻ Refresh</button>
-                </div>
-                {pointsHistory.length === 0 ?
-                  <div style={{ textAlign: 'center', color: 'var(--muted)', padding: '1.5rem', fontSize: '.875rem' }}>No adjustments yet</div> :
-                  <div className="table-wrap">
-                    <table>
-                      <thead>
-                        <tr>
-                          {['Player', 'Change', 'Before', 'After', 'Reason', 'Admin', 'Date'].map(h => <th key={h}>{h}</th>)}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {pointsHistory.map(h => (
-                          <tr key={h.id}>
-                            <td style={{ fontWeight: 600 }}>{h.player?.username || '—'}</td>
-                            <td style={{ fontWeight: 700, color: h.change > 0 ? 'var(--green)' : 'var(--red)' }}>
-                              {h.change > 0 ? '+' : ''}{h.change}
-                            </td>
-                            <td>{h.points_before}</td>
-                            <td>{h.points_after}</td>
-                            <td>{h.reason || '—'}</td>
-                            <td>{h.admin?.username || '—'}</td>
-                            <td style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
-                              {new Date(h.created_at).toLocaleDateString()}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>}
-              </div>
-            </div>
-          )}
+    <div className="card">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: 8 }}>
+        <div style={{ fontWeight: 700 }}>📋 Points Adjustment History</div>
+        <button className="btn btn-secondary btn-sm" onClick={loadPointsHistory}>↻ Refresh</button>
+      </div>
+      {pointsHistory.length === 0 ?
+        <div style={{ textAlign: 'center', color: 'var(--muted)', padding: '1.5rem', fontSize: '.875rem' }}>No adjustments yet</div> :
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                {['Player', 'Change', 'Before', 'After', 'Reason', 'Admin', 'Date'].map(h => <th key={h}>{h}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {pointsHistory.map(h => (
+                <tr key={h.id}>
+                  <td style={{ fontWeight: 600 }}>{h.player?.username || h.player_id || '—'}</td>
+                  <td style={{ fontWeight: 700, color: h.change > 0 ? 'var(--green)' : 'var(--red)' }}>
+                    {h.change > 0 ? '+' : ''}{h.change}
+                  </td>
+                  <td>{h.points_before}</td>
+                  <td>{h.points_after}</td>
+                  <td>{h.reason || '—'}</td>
+                  <td>{h.admin?.username || '—'}</td>
+                  <td style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
+                    {new Date(h.created_at).toLocaleDateString()}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>}
+    </div>
+  </div>
+)}
 
           {/* LEAGUES */}
           {section === 'leagues' && (
@@ -1282,20 +1293,71 @@ export default function AdminPage({ user, profile }) {
           )}
 
           {/* TEAM POINTS */}
-          {section === 'points' && (
-            <div className="card">
-              <div style={{ fontWeight: 700, marginBottom: '1rem', fontSize: '1.1rem' }}>✏️ Adjust Team Points</div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.5rem', marginBottom: '1rem' }}>
-                <select className="form-select" value={adjTeam} onChange={e => setAdjTeam(e.target.value)}>
-                  <option value="">-- Select Team --</option>
-                  {teams.map(t => <option key={t.id} value={t.id}>{t.name} ({t.total_points || 0} pts)</option>)}
-                </select>
-                <input className="form-input" type="number" placeholder="Points Change" value={adjPts} onChange={e => setAdjPts(parseInt(e.target.value) || 0)} />
-                <input className="form-input" placeholder="Reason" value={adjReason} onChange={e => setAdjReason(e.target.value)} />
-                <button className="btn btn-primary" onClick={adjustTeamPoints}>✏️ Apply Points Adjustment</button>
-              </div>
-            </div>
-          )}
+{section === 'points' && (
+  <div className="card">
+    <div style={{ fontWeight: 700, marginBottom: '1rem', fontSize: '1.1rem' }}>✏️ Adjust Team Points</div>
+    
+    {/* Search Teams */}
+    <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+      <input 
+        className="form-input" 
+        placeholder="Search teams..." 
+        value={adjTeamSearch || ''} 
+        onChange={e => setAdjTeamSearch(e.target.value)}
+        style={{ minWidth: '200px', flex: 1 }}
+      />
+      <span style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>
+        {teams.filter(t => 
+          !adjTeamSearch || t.name.toLowerCase().includes(adjTeamSearch.toLowerCase())
+        ).length} teams found
+      </span>
+    </div>
+
+    {/* Points Adjustment Form */}
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.5rem', marginBottom: '1rem' }}>
+      <select className="form-select" value={adjTeam} onChange={e => setAdjTeam(e.target.value)}>
+        <option value="">-- Select Team --</option>
+        {teams
+          .filter(t => !adjTeamSearch || t.name.toLowerCase().includes(adjTeamSearch.toLowerCase()))
+          .map(t => (
+            <option key={t.id} value={t.id}>
+              {t.name} ({t.total_points || 0} pts) - {leagues.find(l => l.id === t.league_id)?.name || 'No League'}
+            </option>
+          ))
+        }
+      </select>
+      <input 
+        className="form-input" 
+        type="number" 
+        placeholder="Points Change (e.g. +3 or -2)" 
+        value={adjPts} 
+        onChange={e => setAdjPts(parseInt(e.target.value) || 0)} 
+      />
+      <input 
+        className="form-input" 
+        placeholder="Reason (e.g. Deduction for violation)" 
+        value={adjReason} 
+        onChange={e => setAdjReason(e.target.value)} 
+      />
+    </div>
+    
+    {/* Show current points and preview */}
+    {adjTeam && adjPts !== 0 && (() => {
+      const team = teams.find(t => t.id === adjTeam);
+      const current = team?.total_points || 0;
+      const newTotal = Math.max(0, current + parseInt(adjPts));
+      const isAdd = parseInt(adjPts) > 0;
+      return (
+        <div className={`alert ${isAdd ? 'alert-success' : 'alert-danger'}`} style={{ marginBottom: '1rem' }}>
+          <strong>{team?.name}</strong>: {current} pts → <strong>{newTotal} pts</strong>
+          {' '}({isAdd ? '+' : ''}{adjPts}) {adjReason && `— "${adjReason}"`}
+        </div>
+      );
+    })()}
+    
+    <button className="btn btn-primary" onClick={adjustTeamPoints}>✏️ Apply Points Adjustment</button>
+  </div>
+)}
 
           {/* RELEGATION */}
           {section === 'relegation' && (
