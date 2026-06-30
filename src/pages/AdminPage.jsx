@@ -479,34 +479,67 @@ export default function AdminPage({ user, profile }) {
   }
 
   async function generateFixtures() {
-    if (!genLeague) { showMsg('Select a league', 'danger'); return; }
-    const r = await apiFetch('GET', `teams?league_id=eq.${genLeague}&is_active=eq.true&select=id`);
-    const ids = Array.isArray(r.data) ? r.data.map(t => t.id) : [];
-    if (ids.length < 2) { showMsg('Need at least 2 teams', 'danger'); return; }
-    const arr = [...ids];
-    if (arr.length % 2 !== 0) arr.push(null);
-    const n = arr.length, rounds = n - 1, fx = [];
-    const rot = [...arr];
-    for (let rv = 0; rv < rounds; rv++) {
-      for (let i = 0; i < n / 2; i++) {
-        const h = rot[i], a = rot[n - 1 - i];
-        if (h && a) fx.push({ league_id: genLeague, home_team_id: h, away_team_id: a, round: rv + 1, status: 'pending' });
-      }
-      rot.splice(1, 0, rot.pop());
-    }
-    const ret = fx.map(f => ({
-      league_id: f.league_id,
-      home_team_id: f.away_team_id,
-      away_team_id: f.home_team_id,
-      round: f.round + rounds,
-      status: 'pending',
-    }));
-    await rFetch('POST', 'fixtures', [...fx, ...ret], { Prefer: 'return=minimal' });
-    await logAction('generate_fixtures', { league_id: genLeague, count: fx.length * 2 });
-    showMsg(`✅ Generated ${fx.length * 2} fixtures (${rounds} rounds × 2 legs)`);
-    loadAll();
+  if (!genLeague) { 
+    showMsg('Select a league', 'danger'); 
+    return; 
   }
-
+  
+  // Get all teams in the league
+  const r = await apiFetch('GET', `teams?league_id=eq.${genLeague}&is_active=eq.true&select=id`);
+  const ids = Array.isArray(r.data) ? r.data.map(t => t.id) : [];
+  
+  if (ids.length < 2) { 
+    showMsg('Need at least 2 teams', 'danger'); 
+    return; 
+  }
+  
+  // Generate fixtures
+  const arr = [...ids];
+  if (arr.length % 2 !== 0) arr.push(null);
+  const n = arr.length, rounds = n - 1, fx = [];
+  const rot = [...arr];
+  
+  for (let rv = 0; rv < rounds; rv++) {
+    for (let i = 0; i < n / 2; i++) {
+      const h = rot[i], a = rot[n - 1 - i];
+      if (h && a) {
+        fx.push({ 
+          league_id: genLeague, 
+          home_team_id: h, 
+          away_team_id: a, 
+          round: rv + 1, 
+          status: 'pending' 
+        });
+      }
+    }
+    rot.splice(1, 0, rot.pop());
+  }
+  
+  const ret = fx.map(f => ({
+    league_id: f.league_id,
+    home_team_id: f.away_team_id,
+    away_team_id: f.home_team_id,
+    round: f.round + rounds,
+    status: 'pending',
+  }));
+  
+  const allFixtures = [...fx, ...ret];
+  
+  // Log what we're about to insert
+  console.log('📅 Generating fixtures:', allFixtures.length);
+  console.log('📅 First fixture:', allFixtures[0]);
+  
+  const result = await rFetch('POST', 'fixtures', allFixtures, { Prefer: 'return=minimal' });
+  
+  if (result.ok) {
+    showMsg(`✅ Generated ${allFixtures.length} fixtures (${rounds} rounds × 2 legs)`);
+    await logAction('generate_fixtures', { league_id: genLeague, count: allFixtures.length });
+    loadAll();
+  } else {
+    showMsg(`❌ Failed to generate fixtures: ${result.data?.message || 'Unknown error'}`, 'danger');
+    console.error('Fixture generation failed:', result);
+  }
+}
   async function processRelegation() {
     if (!genLeague) { showMsg('Select a league', 'danger'); return; }
     if (!window.confirm('Process relegation/promotion? This cannot be undone.')) return;
