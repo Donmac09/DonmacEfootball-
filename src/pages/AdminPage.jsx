@@ -1289,22 +1289,23 @@ export default function AdminPage({ user, profile }) {
                           await rFetch('PATCH', `teams?id=eq.${userTeam.id}`, { league_id: newLeagueId }, { Prefer: 'return=minimal' });
                         } else if (newLeagueId) {
                           // Auto-create team if user doesn't have one and is assigned to a league
-                          const teamName = `${u.username || 'Player'}'s Team`;
-                          await rFetch('POST', 'teams', {
-                            name: teamName,
-                            user_id: u.id,
-                            league_id: newLeagueId,
-                            is_active: true,
-                            total_points: 0,
-                            wins: 0,
-                            draws: 0,
-                            losses: 0,
-                            matches_played: 0,
-                            goals_for: 0,
-                            goals_against: 0,
-                            goal_difference: 0
-                          }, { Prefer: 'return=minimal' });
-                        }
+                          // When creating a team for a user
+const teamName = u.username;  // Use username directly
+
+await rFetch('POST', 'teams', {
+  name: teamName,  // Username becomes team name
+  user_id: u.id,
+  league_id: newLeagueId || u.league_id || null,
+  is_active: true,
+  total_points: 0,
+  wins: 0,
+  draws: 0,
+  losses: 0,
+  matches_played: 0,
+  goals_for: 0,
+  goals_against: 0,
+  goal_difference: 0
+}, { Prefer: 'return=minimal' });
                         
                         showMsg(`✅ ${u.username} assigned to ${targetLeague?.name || 'No League'}`);
                         loadAll();
