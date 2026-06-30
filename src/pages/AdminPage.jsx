@@ -1065,44 +1065,65 @@ export default function AdminPage({ user, profile }) {
     {/* Schedule Fixtures */}
     <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem', alignItems: 'center' }}>
       <button 
-        className="btn btn-success"
-        onClick={async () => {
-          if (!genLeague) { showMsg('Select a league first', 'danger'); return; }
-          
-          // Get all fixtures for this league
-          const r = await apiFetch('GET', `fixtures?league_id=eq.${genLeague}&select=*,home:home_team_id(name),away:away_team_id(name)&order=round`);
-          const fixtures = Array.isArray(r.data) ? r.data : [];
-          
-          if (fixtures.length === 0) {
-            showMsg('No fixtures found for this league', 'danger');
-            return;
-          }
-          
-          // Schedule each fixture (2 days apart)
-          let date = new Date();
-          date.setDate(date.getDate() + 7); // Start 1 week from now
-          let scheduled = 0;
-          
-          for (const fixture of fixtures) {
-            const scheduledDate = new Date(date);
-            scheduledDate.setDate(date.getDate() + (fixture.round - 1) * 2); // 2 days between rounds
-            
-            const result = await rFetch('PATCH', `fixtures?id=eq.${fixture.id}`, {
-              scheduled_date: scheduledDate.toISOString()
-            }, { Prefer: 'return=minimal' });
-            
-            if (result.ok) scheduled++;
-          }
-          
-          showMsg(`✅ Scheduled ${scheduled} fixtures`);
-          // Refresh fixture list
-          const refresh = await apiFetch('GET', `fixtures?league_id=eq.${genLeague}&select=*,home:home_team_id(name),away:away_team_id(name)&order=round`);
-          setFixtureList(Array.isArray(refresh.data) ? refresh.data : []);
-          loadAll();
-        }}
-      >
-        📅 Auto-Schedule All (2 days apart)
-      </button>
+  className="btn btn-success"
+  onClick={async () => {
+    if (!genLeague) { 
+      showMsg('Select a league first', 'danger'); 
+      return; 
+    }
+    
+    try {
+      // Get all fixtures for this league
+      const r = await apiFetch('GET', `fixtures?league_id=eq.${genLeague}&select=*,home:home_team_id(name),away:away_team_id(name)&order=round`);
+      const fixtures = Array.isArray(r.data) ? r.data : [];
+      
+      if (fixtures.length === 0) {
+        showMsg('No fixtures found for this league', 'danger');
+        return;
+      }
+      
+      // Schedule each fixture
+      let startDate = new Date();
+      startDate.setDate(startDate.getDate() + 7); // Start 1 week from now
+      
+      let scheduled = 0;
+      let failed = 0;
+      
+      for (const fixture of fixtures) {
+        // Calculate date for this round (2 days between rounds)
+        const fixtureDate = new Date(startDate);
+        fixtureDate.setDate(startDate.getDate() + (fixture.round - 1) * 2);
+        
+        // Set time to 19:00 (7 PM)
+        fixtureDate.setHours(19, 0, 0, 0);
+        
+        const result = await rFetch('PATCH', `fixtures?id=eq.${fixture.id}`, {
+          scheduled_date: fixtureDate.toISOString()
+        }, { Prefer: 'return=minimal' });
+        
+        if (result.ok) {
+          scheduled++;
+        } else {
+          failed++;
+          console.error('Failed to schedule fixture:', fixture.id, result);
+        }
+      }
+      
+      showMsg(`✅ Scheduled ${scheduled} fixtures${failed > 0 ? `, ${failed} failed` : ''}`);
+      
+      // Refresh fixture list
+      const refresh = await apiFetch('GET', `fixtures?league_id=eq.${genLeague}&select=*,home:home_team_id(name),away:away_team_id(name)&order=round`);
+      setFixtureList(Array.isArray(refresh.data) ? refresh.data : []);
+      loadAll();
+      
+    } catch (error) {
+      console.error('Schedule error:', error);
+      showMsg('❌ Failed to schedule fixtures: ' + error.message, 'danger');
+    }
+  }}
+>
+  📅 Auto-Schedule All (2 days apart)
+</button>
       
       <span style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>
         {fixtureList.length} fixtures loaded
