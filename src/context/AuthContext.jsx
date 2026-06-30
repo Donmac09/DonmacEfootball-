@@ -9,27 +9,10 @@ export function AuthProvider({ children }) {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const loadProfile = useCallback(async (uid) => {
-    if (!uid) {
-      setProfile(null);
-      return null;
-    }
-    try {
-      const p = await getProfile(uid);
-      console.log('Profile loaded:', p); // Debug log
-      setProfile(p);
-      return p;
-    } catch (e) {
-      console.error('loadProfile error:', e);
-      setProfile(null);
-      return null;
-    }
-  }, []);
-
   const refreshProfile = useCallback(async () => {
     if (user) {
       const p = await getProfile(user.id);
-      console.log('Refreshed profile:', p); // Debug log
+      console.log('Refreshed profile:', p);
       setProfile(p);
       return p;
     }
@@ -44,7 +27,7 @@ export function AuthProvider({ children }) {
         sessionStore.session = session;
         setUser(session.user);
         const prof = await getProfile(session.user.id);
-        console.log('Session profile:', prof); // Debug log
+        console.log('Session profile:', prof);
         setProfile(prof);
       }
       setLoading(false);
@@ -55,7 +38,7 @@ export function AuthProvider({ children }) {
         sessionStore.session = session;
         setUser(session.user);
         const prof = await getProfile(session.user.id);
-        console.log('Auth state change profile:', prof); // Debug log
+        console.log('Auth state change profile:', prof);
         setProfile(prof);
       } else {
         sessionStore.session = null;
@@ -73,7 +56,7 @@ export function AuthProvider({ children }) {
       if (data?.user) {
         setUser(data.user);
         const prof = await getProfile(data.user.id);
-        console.log('Sign in profile:', prof); // Debug log
+        console.log('Sign in profile:', prof);
         setProfile(prof);
       }
       return data;
@@ -88,7 +71,7 @@ export function AuthProvider({ children }) {
       if (data?.user) {
         setUser(data.user);
         const prof = await getProfile(data.user.id);
-        console.log('Sign up profile:', prof); // Debug log
+        console.log('Sign up profile:', prof);
         setProfile(prof);
       }
       return data;
