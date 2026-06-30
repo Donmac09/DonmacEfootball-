@@ -852,26 +852,20 @@ useEffect(() => {
       loadAll();
     } else {
       await rFetch('POST', 'teams', {
-        user_id: u.id,  // ← MAKE SURE THIS IS HERE
-        name: newName,
-        league_id: null,
-        total_points: 0,
-        wins: 0,
-        draws: 0,
-        losses: 0,
-        matches_played: 0,
-        goals_for: 0,
-        goals_against: 0,
-        goal_difference: 0,
-        is_active: true
-      }, { Prefer: 'return=minimal' });
-      showMsg(`✅ Team "${newName}" created for ${u.username}`, 'success');
-      loadAll();
-    }
-  } catch (err) {
-    showMsg('❌ Error updating team: ' + err.message, 'danger');
-  }
-}}
+  user_id: u.id,
+  name: teamName,
+  league_id: leagueId,
+  total_points: 0,
+  wins: 0,
+  draws: 0,
+  losses: 0,
+  matches_played: 0,
+  goals_for: 0,
+  goals_against: 0,
+  goal_difference: 0,
+  is_active: true
+}, { Prefer: 'return=minimal' });
+showMsg(`✅ Team "${teamName}" created and assigned to league`, 'success');
                               onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
                             />
                           </td>
@@ -901,26 +895,24 @@ useEffect(() => {
     } else if (leagueId) {
       const teamName = u.username || 'Unknown';
       const result = await rFetch('POST', 'teams', {
-        user_id: u.id,  // ← MAKE SURE THIS IS HERE
-        name: teamName,
-        league_id: leagueId,
-        total_points: 0,
-        wins: 0,
-        draws: 0,
-        losses: 0,
-        matches_played: 0,
-        goals_for: 0,
-        goals_against: 0,
-        goal_difference: 0,
-        is_active: true
-      }, { Prefer: 'return=representation' });
-      // ...
-    }
-    loadAll();
-  } catch (err) {
-    showMsg('❌ Error: ' + err.message, 'danger');
-  }
-}}
+  user_id: u.id,
+  name: teamName,
+  league_id: leagueId,
+  total_points: 0,
+  wins: 0,
+  draws: 0,
+  losses: 0,
+  matches_played: 0,
+  goals_for: 0,
+  goals_against: 0,
+  goal_difference: 0,
+  is_active: true
+}, { Prefer: 'return=representation' });
+if (result.ok) {
+  showMsg(`✅ Team "${teamName}" created and assigned to league`, 'success');
+} else {
+  showMsg('❌ Failed to create team', 'danger');
+}
                             >
                               <option value="">-- No League --</option>
                               {leagues.map(l => (
