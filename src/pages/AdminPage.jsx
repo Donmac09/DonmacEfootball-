@@ -956,94 +956,162 @@ export default function AdminPage({ user, profile }) {
           )}
 
           {/* LEAGUES */}
-          {section === 'leagues' && (
-            <div className="card">
-              <div style={{ fontWeight: 700, marginBottom: '1rem', fontSize: '1.1rem' }}>🏟️ League Management</div>
-              
-              {/* Season Filter */}
-              <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', alignItems: 'center' }}>
-                <label style={{ fontSize: '0.9rem', fontWeight: 600 }}>Filter by Season:</label>
-                <select 
-                  className="form-select" 
-                  value={seasonFilter} 
-                  onChange={e => setSeasonFilter(e.target.value)}
-                  style={{ minWidth: '150px' }}
-                >
-                  <option value="">All Seasons</option>
-                  {uniqueSeasons.map(s => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
-              </div>
+{section === 'leagues' && (
+  <div className="card">
+    <div style={{ fontWeight: 700, marginBottom: '1rem', fontSize: '1.1rem' }}>🏟️ League Management</div>
+    
+    {/* Season Filter */}
+    <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+      <label style={{ fontSize: '0.9rem', fontWeight: 600 }}>Filter by Season:</label>
+      <select 
+        className="form-select" 
+        value={seasonFilter} 
+        onChange={e => setSeasonFilter(e.target.value)}
+        style={{ minWidth: '150px' }}
+      >
+        <option value="">All Seasons</option>
+        {uniqueSeasons.map(s => (
+          <option key={s} value={s}>{s}</option>
+        ))}
+      </select>
+    </div>
 
-              {/* Create League Form */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.5rem', marginBottom: '1rem' }}>
-                <input 
-                  className="form-input" 
-                  placeholder="League Name" 
-                  value={nlName} 
-                  onChange={e => handleLeagueNameChange(e.target.value)} 
-                />
-                <input 
-                  className="form-input" 
-                  placeholder="Country" 
-                  value={nlCountry} 
-                  onChange={e => setNlCountry(e.target.value)} 
-                />
-                <input 
-                  className="form-input" 
-                  type="number" 
-                  placeholder="Tier" 
-                  value={nlTier} 
-                  onChange={e => setNlTier(parseInt(e.target.value) || 1)} 
-                />
-                <input 
-                  className="form-input" 
-                  type="number" 
-                  placeholder="Slots" 
-                  value={nlSlots} 
-                  onChange={e => setNlSlots(parseInt(e.target.value) || 16)} 
-                />
-                <input 
-                  className="form-input" 
-                  placeholder="Season (e.g. 2024-25)" 
-                  value={nlSeason} 
-                  onChange={e => setNlSeason(e.target.value)} 
-                />
-              </div>
-              <button className="btn btn-primary" onClick={createNewLeague} style={{ marginBottom: '1rem' }}>➕ Create League</button>
+    {/* Create League Form */}
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.5rem', marginBottom: '1rem' }}>
+      <input 
+        className="form-input" 
+        placeholder="League Name" 
+        value={nlName} 
+        onChange={e => handleLeagueNameChange(e.target.value)} 
+      />
+      <input 
+        className="form-input" 
+        placeholder="Country" 
+        value={nlCountry} 
+        onChange={e => setNlCountry(e.target.value)} 
+      />
+      <input 
+        className="form-input" 
+        type="number" 
+        placeholder="Tier" 
+        value={nlTier} 
+        onChange={e => setNlTier(parseInt(e.target.value) || 1)} 
+      />
+      <input 
+        className="form-input" 
+        type="number" 
+        placeholder="Slots" 
+        value={nlSlots} 
+        onChange={e => setNlSlots(parseInt(e.target.value) || 16)} 
+      />
+      <input 
+        className="form-input" 
+        placeholder="Season (e.g. 2024-25)" 
+        value={nlSeason} 
+        onChange={e => setNlSeason(e.target.value)} 
+      />
+    </div>
+    <button className="btn btn-primary" onClick={createNewLeague} style={{ marginBottom: '1rem' }}>➕ Create League</button>
 
-              {/* League Table */}
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Name</th>
-                      <th>Country</th>
-                      <th>Tier</th>
-                      <th>Slots</th>
-                      <th>Season</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredLeagues.length === 0 ? (
-                      <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--muted)', padding: '2rem' }}>No leagues configured</td></tr>
-                    ) : (
-                      filteredLeagues.map(l => (
-                        <tr key={l.id}>
-                          <td style={{ fontWeight: 600 }}>{l.name}</td>
-                          <td>{l.country}</td>
-                          <td>{l.tier}</td>
-                          <td style={{ color: 'var(--blue)', fontWeight: 'bold' }}>{l.slots || 16}</td>
-                          <td>{l.season || '—'}</td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+    {/* League Actions */}
+    <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+      <button 
+        className="btn btn-danger" 
+        onClick={async () => {
+          if (!window.confirm('⚠️ This will remove ALL users from ALL leagues. Continue?')) return;
+          await rFetch('PATCH', 'profiles', { league_id: null }, { Prefer: 'return=minimal' });
+          await rFetch('PATCH', 'users', { league_id: null }, { Prefer: 'return=minimal' });
+          showMsg('🔄 All users removed from all leagues');
+          loadAll();
+        }}
+      >
+        🔄 Reset All League Assignments
+      </button>
+      
+      <button 
+        className="btn btn-warning" 
+        onClick={async () => {
+          const leagueId = prompt('Enter the League ID to assign all users to:');
+          if (!leagueId) return;
+          if (!window.confirm(`Assign ALL users to league ${leagueId}?`)) return;
+          
+          await rFetch('PATCH', 'profiles', { league_id: leagueId }, { Prefer: 'return=minimal' });
+          await rFetch('PATCH', 'users', { league_id: leagueId }, { Prefer: 'return=minimal' });
+          showMsg(`✅ All users assigned to league ${leagueId}`);
+          loadAll();
+        }}
+      >
+        📋 Assign All Users to League
+      </button>
+    </div>
+
+    {/* League Table */}
+    <div className="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Country</th>
+            <th>Tier</th>
+            <th>Slots</th>
+            <th>Season</th>
+            <th>Users</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {filteredLeagues.length === 0 ? (
+            <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--muted)', padding: '2rem' }}>No leagues configured</td></tr>
+          ) : (
+            filteredLeagues.map(l => {
+              const userCount = users.filter(u => u.league_id === l.id).length;
+              return (
+                <tr key={l.id}>
+                  <td style={{ fontWeight: 600 }}>{l.name}</td>
+                  <td>{l.country}</td>
+                  <td>{l.tier}</td>
+                  <td style={{ color: 'var(--blue)', fontWeight: 'bold' }}>{l.max_slots || 16}</td>
+                  <td>{l.season || '—'}</td>
+                  <td>
+                    <span className="badge badge-blue">{userCount} / {l.max_slots || 16}</span>
+                  </td>
+                  <td>
+                    <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                      <button 
+                        className="btn btn-sm btn-success"
+                        onClick={async () => {
+                          if (!window.confirm(`Assign ALL users to ${l.name}?`)) return;
+                          await rFetch('PATCH', 'profiles', { league_id: l.id }, { Prefer: 'return=minimal' });
+                          await rFetch('PATCH', 'users', { league_id: l.id }, { Prefer: 'return=minimal' });
+                          showMsg(`✅ All users assigned to ${l.name}`);
+                          loadAll();
+                        }}
+                      >
+                        Assign All
+                      </button>
+                      <button 
+                        className="btn btn-sm btn-danger"
+                        onClick={async () => {
+                          if (!window.confirm(`Remove ALL users from ${l.name}?`)) return;
+                          await rFetch('PATCH', `profiles?league_id=eq.${l.id}`, { league_id: null }, { Prefer: 'return=minimal' });
+                          await rFetch('PATCH', `users?league_id=eq.${l.id}`, { league_id: null }, { Prefer: 'return=minimal' });
+                          showMsg(`🔄 All users removed from ${l.name}`);
+                          loadAll();
+                        }}
+                      >
+                        Clear All
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })
           )}
+        </tbody>
+      </table>
+    </div>
+  </div>
+)}
 
           {/* FIXTURES */}
           {section === 'fixtures' && (
