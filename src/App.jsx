@@ -37,12 +37,12 @@ function LoadingScreen() {
 }
 
 function Shell() {
-  const { user, profile, loading, handleSignIn, refreshProfile } = useAuth();
+  const { user, profile, loading, refreshProfile } = useAuth();
   const [page, setPage] = useState('home');
 
   if (loading) return <LoadingScreen />;
 
-  if (!user) return <AuthPage onAuth={handleSignIn} />;
+  if (!user) return <AuthPage />;
 
   const pageMap = {
     home:        <HomePage profile={profile} />,
