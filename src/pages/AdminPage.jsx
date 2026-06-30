@@ -270,34 +270,34 @@ export default function AdminPage({ user, profile }) {
 
   // ========== LEAGUE FUNCTIONS ==========
   async function createNewLeague() {
-    if (!nlName || !nlCountry) { 
-      showMsg('Please fill in all league fields', 'danger'); 
-      return; 
-    }
-    
-    const slotCount = REAL_LEAGUE_SLOTS[nlName]?.slots || parseInt(nlSlots) || 16;
-    
-    const r = await rFetch('POST', 'leagues', {
-      name: nlName,
-      country: nlCountry,
-      tier: parseInt(nlTier) || 1,
-      slots: slotCount,
-      season: nlSeason || '2024-25'
-    });
-    
-    if (r.ok) {
-      showMsg(`🏟️ ${nlName} created successfully with ${slotCount} slots!`);
-      setNlName('');
-      setNlCountry('');
-      setNlTier(1);
-      setNlSlots(16);
-      setNlSeason('2024-25');
-      loadAll();
-      logAction('create_league', { name: nlName, country: nlCountry, slots: slotCount, season: nlSeason });
-    } else {
-      showMsg('Failed to create league: ' + (r.data?.message || 'Unknown error'), 'danger');
-    }
+  if (!nlName || !nlCountry) { 
+    showMsg('Please fill in all league fields', 'danger'); 
+    return; 
   }
+  
+  const slotCount = REAL_LEAGUE_SLOTS[nlName]?.slots || parseInt(nlSlots) || 16;
+  
+  const r = await rFetch('POST', 'leagues', {
+    name: nlName,
+    country: nlCountry,
+    tier: parseInt(nlTier) || 1,
+    max_slots: slotCount,  // <-- Changed from slots to max_slots
+    season: nlSeason || '2024-25'
+  });
+  
+  if (r.ok) {
+    showMsg(`🏟️ ${nlName} created successfully with ${slotCount} slots!`);
+    setNlName('');
+    setNlCountry('');
+    setNlTier(1);
+    setNlSlots(16);
+    setNlSeason('2024-25');
+    loadAll();
+    logAction('create_league', { name: nlName, country: nlCountry, max_slots: slotCount, season: nlSeason });
+  } else {
+    showMsg('Failed to create league: ' + (r.data?.message || 'Unknown error'), 'danger');
+  }
+}
 
   // ========== EUROPEAN COMPETITION FUNCTIONS ==========
   async function createEuropeanCompetition() {
