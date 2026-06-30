@@ -110,7 +110,7 @@ export default function AdminPage({ user, profile }) {
         apiFetch('GET', 'teams?select=*&order=total_points.desc'),
         apiFetch('GET', 'cups?select=*'),
         apiFetch('GET', 'european_competitions?select=*'),
-        apiFetch('GET', 'users?select=id,username,email,role,is_blocked,created_at,phone,phone_number,league_id&order=created_at.desc'),
+        apiFetch('GET', 'profiles?select=id,username,email,role,is_blocked,created_at,phone,phone_number,league_id&order=created_at.desc'),
         apiFetch('GET', 'free_play_leaderboard?select=*&order=points.desc'),
         apiFetch('GET', 'fixtures?status=eq.pending_review&select=*,home:home_team_id(name),away:away_team_id(name),leagues(name)&order=created_at'),
         apiFetch('GET', 'cup_fixtures?status=eq.pending_review&select=*,home:home_team_id(name),away:away_team_id(name),cups(name)&order=created_at'),
