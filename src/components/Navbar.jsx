@@ -4,29 +4,21 @@ import { sessionStore, SUPABASE_URL, SUPABASE_KEY } from '../services/supabase';
 
 export default function Navbar({ page, setPage }) {
   const { user, profile } = useAuth();
-  
-  // Debug log
-  console.log('Navbar profile:', profile);
-  console.log('Navbar profile role:', profile?.role);
-  console.log('Is admin?', profile?.role === 'admin');
-
-  // ... rest of your code
-}
   const [notifCount, setNotifCount] = useState(0);
-  const [showNotifs, setShowNotifs]  = useState(false);
-  const [notifs, setNotifs]          = useState([]);
-  const [menuOpen, setMenuOpen]     = useState(false);
+  const [showNotifs, setShowNotifs] = useState(false);
+  const [notifs, setNotifs] = useState([]);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   // All nav items
   const navItems = [
-    ['home',        '🏠', 'Home'],
-    ['leagues',     '🏟️', 'Leagues'],
-    ['europe',      '🇪🇺', 'Europe'],
-    ['cups',        '🏆', 'Cups'],
+    ['home', '🏠', 'Home'],
+    ['leagues', '🏟️', 'Leagues'],
+    ['europe', '🇪🇺', 'Europe'],
+    ['cups', '🏆', 'Cups'],
     ['matchmaking', '⚽', 'Matches'],
-    ['chat',        '💬', 'Chat'],
-    ['team',        '👕', 'My Team'],
-    ['profile',     '👤', 'Profile'],
+    ['chat', '💬', 'Chat'],
+    ['team', '👕', 'My Team'],
+    ['profile', '👤', 'Profile'],
   ];
   if (profile?.role === 'admin') navItems.push(['admin', '⚙️', 'Admin']);
 
@@ -44,7 +36,7 @@ export default function Navbar({ page, setPage }) {
     check();
     const iv = setInterval(check, 30000);
     return () => clearInterval(iv);
-  }, [user, page]);
+  }, [user]);
 
   async function loadNotifs() {
     const tok = sessionStore.session?.access_token ?? SUPABASE_KEY;
@@ -71,8 +63,8 @@ export default function Navbar({ page, setPage }) {
     <>
       {/* ── MOBILE HEADER WITH HAMBURGER ─────────────────────────── */}
       <div className="mobile-header">
-        <button 
-          className="hamburger-btn" 
+        <button
+          className="hamburger-btn"
           onClick={() => setMenuOpen(true)}
           aria-label="Open menu"
         >
@@ -110,8 +102,8 @@ export default function Navbar({ page, setPage }) {
           <div style={{ fontWeight: 700, fontSize: '1rem' }}>
             {profile?.username ? `👋 ${profile.username}` : 'Menu'}
           </div>
-          <button 
-            className="close-btn" 
+          <button
+            className="close-btn"
             onClick={() => setMenuOpen(false)}
             aria-label="Close menu"
           >
@@ -190,19 +182,19 @@ export default function Navbar({ page, setPage }) {
               {notifs.length === 0
                 ? <div className="notif-empty">No notifications</div>
                 : notifs.map(n => (
-                    <div
-                      key={n.id}
-                      className={`notif-item ${n.read ? 'read' : 'unread'}`}
-                      onClick={() => { setShowNotifs(false); setPage('matchmaking'); }}
-                    >
-                      <span className="notif-icon">{n.type === 'challenge' ? '⚔️' : '📢'}</span>
-                      <div className="notif-body">
-                        <div className="notif-message">{n.message}</div>
-                        <div className="notif-time">{new Date(n.created_at).toLocaleString()}</div>
-                      </div>
-                      {!n.read && <div className="notif-unread-dot" />}
+                  <div
+                    key={n.id}
+                    className={`notif-item ${n.read ? 'read' : 'unread'}`}
+                    onClick={() => { setShowNotifs(false); setPage('matchmaking'); }}
+                  >
+                    <span className="notif-icon">{n.type === 'challenge' ? '⚔️' : '📢'}</span>
+                    <div className="notif-body">
+                      <div className="notif-message">{n.message}</div>
+                      <div className="notif-time">{new Date(n.created_at).toLocaleString()}</div>
                     </div>
-                  ))}
+                    {!n.read && <div className="notif-unread-dot" />}
+                  </div>
+                ))}
             </div>
           </div>
         </div>
