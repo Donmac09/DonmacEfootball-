@@ -12,6 +12,7 @@ const SECTIONS = [
   ['points', '✏️ Team Points'],
   ['relegation', '📊 Relegation'],
   ['users', '👥 Users'],
+  ['teams', '👕 Teams'],
   ['logs', '📋 Logs'],
 ];
 
@@ -1338,6 +1339,100 @@ if (!userResponse || !Array.isArray(userResponse.data) || userResponse.data.leng
                 </tr>
               );
             })
+          )}
+        </tbody>
+      </table>
+    </div>
+  </div>
+)}
+
+          {/* TEAMS MANAGEMENT */}
+{section === 'teams' && (
+  <div className="card">
+    <div style={{ fontWeight: 700, marginBottom: '1rem', fontSize: '1.1rem' }}>👕 Team Management</div>
+    
+    {/* Filter by League */}
+    <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+      <label style={{ fontSize: '0.9rem', fontWeight: 600 }}>Filter by League:</label>
+      <select 
+        className="form-select" 
+        value={genLeague} 
+        onChange={e => setGenLeague(e.target.value)}
+        style={{ minWidth: '200px' }}
+      >
+        <option value="">All Leagues</option>
+        {leagues.map(l => (
+          <option key={l.id} value={l.id}>{l.name} ({l.max_slots || 16} slots)</option>
+        ))}
+      </select>
+    </div>
+
+    {/* Teams Table */}
+    <div className="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Team Name</th>
+            <th>Current League</th>
+            <th>Points</th>
+            <th>Status</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {teams.length === 0 ? (
+            <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--muted)', padding: '2rem' }}>No teams found</td></tr>
+          ) : (
+            teams
+              .filter(t => !genLeague || t.league_id === genLeague)
+              .map(t => {
+                const league = leagues.find(l => l.id === t.league_id);
+                return (
+                  <tr key={t.id}>
+                    <td style={{ fontWeight: 600 }}>{t.name}</td>
+                    <td>{league?.name || '—'}</td>
+                    <td>{t.total_points || 0}</td>
+                    <td>
+                      <span className={`badge ${t.is_active ? 'badge-green' : 'badge-red'}`}>
+                        {t.is_active ? 'Active' : 'Inactive'}
+                      </span>
+                    </td>
+                    <td>
+                      <select 
+                        className="form-select" 
+                        value={t.league_id || ''} 
+                        onChange={async (e) => {
+                          const newLeagueId = e.target.value || null;
+                          // Check if league is full
+                          if (newLeagueId) {
+                            const targetLeague = leagues.find(l => l.id === newLeagueId);
+                            const currentCount = teams.filter(team => team.league_id === newLeagueId).length;
+                            if (targetLeague && currentCount >= (targetLeague.max_slots || 16)) {
+                              showMsg(`❌ ${targetLeague.name} is full (${currentCount}/${targetLeague.max_slots || 16})`, 'danger');
+                              return;
+                            }
+                          }
+                          await rFetch('PATCH', `teams?id=eq.${t.id}`, { league_id: newLeagueId }, { Prefer: 'return=minimal' });
+                          showMsg(`✅ ${t.name} moved to ${newLeagueId ? leagues.find(l => l.id === newLeagueId)?.name : 'No League'}`);
+                          loadAll();
+                        }}
+                        style={{ padding: '4px', minHeight: 'auto', fontSize: '0.85rem' }}
+                      >
+                        <option value="">-- No League --</option>
+                        {leagues.map(l => {
+                          const count = teams.filter(team => team.league_id === l.id).length;
+                          const isFull = count >= (l.max_slots || 16);
+                          return (
+                            <option key={l.id} value={l.id} disabled={isFull && t.league_id !== l.id}>
+                              {l.name} ({count}/{l.max_slots || 16}) {isFull && t.league_id !== l.id ? '🔴 FULL' : ''}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </td>
+                  </tr>
+                );
+              })
           )}
         </tbody>
       </table>
