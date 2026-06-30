@@ -183,13 +183,22 @@ export default function AdminPage({ user, profile }) {
   }, []);
 
   const loadAll = useCallback(async () => {
-    try {
-      logger.info('Loading all admin data...');
-      
-      let userResponse = await apiFetch('GET', 'profiles?select=id,username,email,role,is_blocked,created_at,phone,phone_number,league_id&order=created_at.desc');
-if (!userResponse || !Array.isArray(userResponse.data) || userResponse.data.length === 0) {
-  userResponse = await apiFetch('GET', 'users?select=id,username,email,role,is_blocked,created_at,phone,phone_number,league_id&order=created_at.desc');
-}
+  try {
+    logger.info('Loading all admin data...');
+    
+    // Make sure we're fetching league_id
+    let userResponse = await apiFetch('GET', 'profiles?select=id,username,email,role,is_blocked,created_at,phone,phone_number,league_id&order=created_at.desc');
+    if (!userResponse || !Array.isArray(userResponse.data) || userResponse.data.length === 0) {
+      userResponse = await apiFetch('GET', 'users?select=id,username,email,role,is_blocked,created_at,phone,phone_number,league_id&order=created_at.desc');
+    }
+    const userData = Array.isArray(userResponse.data) ? userResponse.data : [];
+    setUsers(userData);
+    
+    // ... rest of your loadAll code
+  } catch (error) {
+    // ... error handling
+  }
+}, []);
       const userData = Array.isArray(userResponse.data) ? userResponse.data : [];
 
       const [l, t, c, e, lb, pf, pcf, pef, pfp] = await Promise.all([
@@ -1268,6 +1277,41 @@ if (!userResponse || !Array.isArray(userResponse.data) || userResponse.data.leng
       onChange={e => setUserSearch(e.target.value)} 
       style={{ marginBottom: '1rem' }}
     />
+    
+    {/* Bulk Assign Users */}
+    <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+      <select 
+        className="form-select" 
+        onChange={async (e) => {
+          const leagueId = e.target.value;
+          if (!leagueId) return;
+          if (!window.confirm(`Assign ALL filtered users to ${leagues.find(l => l.id === leagueId)?.name}?`)) return;
+          
+          // Assign all FILTERED users to the selected league
+          for (const user of filteredUsers) {
+            await rFetch('PATCH', `profiles?id=eq.${user.id}`, { league_id: leagueId }, { Prefer: 'return=minimal' });
+            await rFetch('PATCH', `users?id=eq.${user.id}`, { league_id: leagueId }, { Prefer: 'return=minimal' });
+          }
+          showMsg(`✅ ${filteredUsers.length} users assigned to ${leagues.find(l => l.id === leagueId)?.name}`);
+          loadAll();
+        }}
+        style={{ minWidth: '200px' }}
+      >
+        <option value="">-- Bulk Assign to League --</option>
+        {leagues.map(l => {
+          const count = users.filter(u => u.league_id === l.id).length;
+          return (
+            <option key={l.id} value={l.id}>
+              {l.name} ({count}/{l.max_slots || 16})
+            </option>
+          );
+        })}
+      </select>
+      <span style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>
+        {filteredUsers.length} users shown
+      </span>
+    </div>
+
     <div className="table-wrap">
       <table>
         <thead>
@@ -1277,20 +1321,17 @@ if (!userResponse || !Array.isArray(userResponse.data) || userResponse.data.leng
             <th>Phone</th>
             <th>Role</th>
             <th>League</th>
-            <th>Teams</th>
             <th>Status</th>
             <th>Action</th>
           </tr>
         </thead>
         <tbody>
           {filteredUsers.length === 0 ? (
-            <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--muted)', padding: '2rem' }}>No users found</td></tr>
+            <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--muted)', padding: '2rem' }}>No users found</td></tr>
           ) : (
             filteredUsers.map(u => {
-              // Find teams associated with this user
-              const userTeams = teams.filter(t => t.user_id === u.id || t.owner_id === u.id || t.created_by === u.id);
-              const teamNames = userTeams.map(t => t.name).join(', ');
-              
+              // Get the current league name
+              const currentLeague = leagues.find(l => l.id === u.league_id);
               return (
                 <tr key={u.id}>
                   <td style={{ fontWeight: 600 }}>{u.username || '—'}</td>
@@ -1311,17 +1352,39 @@ if (!userResponse || !Array.isArray(userResponse.data) || userResponse.data.leng
                     <select 
                       className="form-select" 
                       value={u.league_id || ''} 
-                      onChange={e => assignLeagueToUser(u.id, e.target.value)}
+                      onChange={async (e) => {
+                        const newLeagueId = e.target.value || null;
+                        const targetLeague = leagues.find(l => l.id === newLeagueId);
+                        
+                        // Check if league is full
+                        if (newLeagueId) {
+                          const currentCount = users.filter(user => user.league_id === newLeagueId).length;
+                          if (targetLeague && currentCount >= (targetLeague.max_slots || 16)) {
+                            showMsg(`❌ ${targetLeague.name} is full (${currentCount}/${targetLeague.max_slots || 16})`, 'danger');
+                            return;
+                          }
+                        }
+                        
+                        // Update both profiles and users
+                        await rFetch('PATCH', `profiles?id=eq.${u.id}`, { league_id: newLeagueId }, { Prefer: 'return=minimal' });
+                        await rFetch('PATCH', `users?id=eq.${u.id}`, { league_id: newLeagueId }, { Prefer: 'return=minimal' });
+                        
+                        showMsg(`✅ ${u.username} assigned to ${targetLeague?.name || 'No League'}`);
+                        loadAll();
+                      }}
                       style={{ padding: '4px', minHeight: 'auto', fontSize: '0.85rem' }}
                     >
                       <option value="">-- No League --</option>
-                      {leagues.map(lg => (
-                        <option key={lg.id} value={lg.id}>{lg.name}</option>
-                      ))}
+                      {leagues.map(l => {
+                        const count = users.filter(user => user.league_id === l.id).length;
+                        const isFull = count >= (l.max_slots || 16);
+                        return (
+                          <option key={l.id} value={l.id} disabled={isFull && u.league_id !== l.id}>
+                            {l.name} ({count}/{l.max_slots || 16}) {isFull && u.league_id !== l.id ? '🔴' : ''}
+                          </option>
+                        );
+                      })}
                     </select>
-                  </td>
-                  <td style={{ fontSize: '0.85rem' }}>
-                    {teamNames || '—'}
                   </td>
                   <td>
                     <span className={`badge ${u.is_blocked ? 'badge-red' : 'badge-green'}`}>
@@ -1345,7 +1408,6 @@ if (!userResponse || !Array.isArray(userResponse.data) || userResponse.data.leng
     </div>
   </div>
 )}
-
           {/* TEAMS MANAGEMENT */}
 {section === 'teams' && (
   <div className="card">
