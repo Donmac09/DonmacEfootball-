@@ -5,7 +5,7 @@ import { getProfile, signOut as authSignOut } from '../services/auth';
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const [user,    setUser]    = useState(null);
+  const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -19,6 +19,35 @@ export function AuthProvider({ children }) {
     if (user) await loadProfile(user.id);
   }, [user, loadProfile]);
 
+  // ── Create user profile in users table ──────────────────────────────
+  const createUserProfile = useCallback(async (userId, email, username) => {
+    try {
+      const { data, error } = await sb
+        .from('users')
+        .insert([
+          {
+            id: userId,
+            email: email,
+            username: username || email?.split('@')[0] || 'User',
+            role: 'player',
+            is_blocked: false,
+            created_at: new Date().toISOString(),
+          }
+        ])
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error creating user profile:', error);
+        return null;
+      }
+      return data;
+    } catch (e) {
+      console.error('Error creating user profile:', e);
+      return null;
+    }
+  }, []);
+
   useEffect(() => {
     const timeout = setTimeout(() => setLoading(false), 3000);
 
@@ -27,7 +56,17 @@ export function AuthProvider({ children }) {
       if (session?.user) {
         sessionStore.session = session;
         setUser(session.user);
-        await loadProfile(session.user.id);
+        
+        // Try to load profile, if not exists, create it
+        let prof = await getProfile(session.user.id);
+        if (!prof) {
+          prof = await createUserProfile(
+            session.user.id,
+            session.user.email,
+            session.user.user_metadata?.username || session.user.email?.split('@')[0]
+          );
+        }
+        setProfile(prof);
       }
       setLoading(false);
     }).catch(() => { clearTimeout(timeout); setLoading(false); });
@@ -36,7 +75,16 @@ export function AuthProvider({ children }) {
       if (session?.user) {
         sessionStore.session = session;
         setUser(session.user);
-        await loadProfile(session.user.id);
+        
+        let prof = await getProfile(session.user.id);
+        if (!prof) {
+          prof = await createUserProfile(
+            session.user.id,
+            session.user.email,
+            session.user.user_metadata?.username || session.user.email?.split('@')[0]
+          );
+        }
+        setProfile(prof);
       } else {
         sessionStore.session = null;
         setUser(null);
@@ -45,7 +93,7 @@ export function AuthProvider({ children }) {
     });
 
     return () => subscription.unsubscribe();
-  }, [loadProfile]);
+  }, [loadProfile, createUserProfile]);
 
   async function handleSignIn(userData, profileData) {
     setUser(userData);
