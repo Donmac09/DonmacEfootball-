@@ -4,6 +4,14 @@ import { sessionStore, SUPABASE_URL, SUPABASE_KEY } from '../services/supabase';
 
 export default function Navbar({ page, setPage }) {
   const { user, profile } = useAuth();
+  
+  // Debug log
+  console.log('Navbar profile:', profile);
+  console.log('Navbar profile role:', profile?.role);
+  console.log('Is admin?', profile?.role === 'admin');
+
+  // ... rest of your code
+}
   const [notifCount, setNotifCount] = useState(0);
   const [showNotifs, setShowNotifs]  = useState(false);
   const [notifs, setNotifs]          = useState([]);
