@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { signIn, signUp, getProfile } from '../services/auth';
+import { useAuth } from '../context/AuthContext';
 
-export default function AuthPage({ onAuth }) {
+export default function AuthPage() {
+  const { handleSignIn, handleSignUp } = useAuth();
   const [mode, setMode]       = useState('login');
   const [email, setEmail]     = useState('');
   const [password, setPass]   = useState('');
@@ -17,18 +18,15 @@ export default function AuthPage({ onAuth }) {
     setError(''); setSuccess(''); setLoading(true);
     try {
       if (mode === 'login') {
-        const d = await signIn(email, password);
-        const profile = await getProfile(d.user.id);
-        onAuth(d.user, profile);
+        await handleSignIn(email, password);
       } else {
         if (!username.trim()) throw new Error('Username is required');
         if (password.length < 6) throw new Error('Password must be at least 6 characters');
         let wa = whatsapp.trim();
         if (wa && !wa.startsWith('+')) wa = '+' + wa;
-        const d = await signUp(email, password, username, wa);
-        if (d.session) {
-          const profile = await getProfile(d.user?.id);
-          onAuth(d.user, profile);
+        const result = await handleSignUp(email, password, username, wa);
+        if (result?.user) {
+          setSuccess('✅ Account created! You are now signed in.');
         } else {
           setSuccess('✅ Account created! Check your email to confirm, then sign in.');
           setMode('login');
