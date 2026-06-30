@@ -1168,84 +1168,93 @@ export default function AdminPage({ user, profile }) {
           )}
 
           {/* USERS */}
-          {section === 'users' && (
-            <div className="card">
-              <div style={{ fontWeight: 700, marginBottom: '1rem', fontSize: '1.1rem' }}>👥 System Users Management</div>
-              <input 
-                className="form-input" 
-                placeholder="Search users by name or email..." 
-                value={userSearch} 
-                onChange={e => setUserSearch(e.target.value)} 
-                style={{ marginBottom: '1rem' }}
-              />
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Username</th>
-                      <th>Email</th>
-                      <th>Phone</th>
-                      <th>Role</th>
-                      <th>League</th>
-                      <th>Status</th>
-                      <th>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredUsers.length === 0 ? (
-                      <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--muted)', padding: '2rem' }}>No users found</td></tr>
-                    ) : (
-                      filteredUsers.map(u => (
-                        <tr key={u.id}>
-                          <td style={{ fontWeight: 600 }}>{u.username || '—'}</td>
-                          <td>{u.email || '—'}</td>
-                          <td>{u.phone || u.phone_number || '—'}</td>
-                          <td>
-                            <select 
-                              className="form-select" 
-                              value={u.role || 'user'} 
-                              onChange={e => setRole(u.id, e.target.value)}
-                              style={{ padding: '4px', minHeight: 'auto', fontSize: '0.85rem' }}
-                            >
-                              <option value="user">User</option>
-                              <option value="admin">Admin</option>
-                            </select>
-                          </td>
-                          <td>
-                            <select 
-                              className="form-select" 
-                              value={u.league_id || ''} 
-                              onChange={e => assignLeagueToUser(u.id, e.target.value)}
-                              style={{ padding: '4px', minHeight: 'auto', fontSize: '0.85rem' }}
-                            >
-                              <option value="">-- No League --</option>
-                              {leagues.map(lg => (
-                                <option key={lg.id} value={lg.id}>{lg.name}</option>
-                              ))}
-                            </select>
-                          </td>
-                          <td>
-                            <span className={`badge ${u.is_blocked ? 'badge-red' : 'badge-green'}`}>
-                              {u.is_blocked ? 'Blocked' : 'Active'}
-                            </span>
-                          </td>
-                          <td>
-                            <button 
-                              className={`btn btn-sm ${u.is_blocked ? 'btn-success' : 'btn-danger'}`}
-                              onClick={() => blockUser(u.id, !u.is_blocked)}
-                            >
-                              {u.is_blocked ? '🔓 Unblock' : '🚫 Block'}
-                            </button>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+{section === 'users' && (
+  <div className="card">
+    <div style={{ fontWeight: 700, marginBottom: '1rem', fontSize: '1.1rem' }}>👥 System Users Management</div>
+    <input 
+      className="form-input" 
+      placeholder="Search users by name or email..." 
+      value={userSearch} 
+      onChange={e => setUserSearch(e.target.value)} 
+      style={{ marginBottom: '1rem' }}
+    />
+    <div className="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Username</th>
+            <th>Email</th>
+            <th>Phone</th>
+            <th>Role</th>
+            <th>League</th>
+            <th>Teams</th>
+            <th>Status</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {filteredUsers.length === 0 ? (
+            <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--muted)', padding: '2rem' }}>No users found</td></tr>
+          ) : (
+            filteredUsers.map(u => {
+              // Find teams associated with this user
+              const userTeams = teams.filter(t => t.user_id === u.id || t.owner_id === u.id || t.created_by === u.id);
+              const teamNames = userTeams.map(t => t.name).join(', ');
+              
+              return (
+                <tr key={u.id}>
+                  <td style={{ fontWeight: 600 }}>{u.username || '—'}</td>
+                  <td>{u.email || '—'}</td>
+                  <td>{u.phone || u.phone_number || '—'}</td>
+                  <td>
+                    <select 
+                      className="form-select" 
+                      value={u.role || 'user'} 
+                      onChange={e => setRole(u.id, e.target.value)}
+                      style={{ padding: '4px', minHeight: 'auto', fontSize: '0.85rem' }}
+                    >
+                      <option value="user">User</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                  </td>
+                  <td>
+                    <select 
+                      className="form-select" 
+                      value={u.league_id || ''} 
+                      onChange={e => assignLeagueToUser(u.id, e.target.value)}
+                      style={{ padding: '4px', minHeight: 'auto', fontSize: '0.85rem' }}
+                    >
+                      <option value="">-- No League --</option>
+                      {leagues.map(lg => (
+                        <option key={lg.id} value={lg.id}>{lg.name}</option>
+                      ))}
+                    </select>
+                  </td>
+                  <td style={{ fontSize: '0.85rem' }}>
+                    {teamNames || '—'}
+                  </td>
+                  <td>
+                    <span className={`badge ${u.is_blocked ? 'badge-red' : 'badge-green'}`}>
+                      {u.is_blocked ? 'Blocked' : 'Active'}
+                    </span>
+                  </td>
+                  <td>
+                    <button 
+                      className={`btn btn-sm ${u.is_blocked ? 'btn-success' : 'btn-danger'}`}
+                      onClick={() => blockUser(u.id, !u.is_blocked)}
+                    >
+                      {u.is_blocked ? '🔓 Unblock' : '🚫 Block'}
+                    </button>
+                  </td>
+                </tr>
+              );
+            })
           )}
-
+        </tbody>
+      </table>
+    </div>
+  </div>
+)}
           {/* LOGS */}
           {section === 'logs' && (
             <div className="card">
