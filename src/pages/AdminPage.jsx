@@ -1127,109 +1127,176 @@ export default function AdminPage({ user, profile }) {
           )}
 
           {/* USERS */}
-          {section === 'users' && (
-            <div className="card">
-              <div style={{ fontWeight: 700, marginBottom: '1rem', fontSize: '1.1rem' }}>👥 System Users Management</div>
-              <input 
-                className="form-input" 
-                placeholder="Search users by name or email..." 
-                value={userSearch} 
-                onChange={e => setUserSearch(e.target.value)} 
-                style={{ marginBottom: '1rem' }}
-              />
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Username</th>
-                      <th>Email</th>
-                      <th>Phone</th>
-                      <th>Role</th>
-                      <th>League</th>
-                      <th>Status</th>
-                      <th>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredUsers.length === 0 ? (
-                      <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--muted)', padding: '2rem' }}>No users found</td></tr>
-                    ) : (
-                      filteredUsers.map(u => {
-                        const currentLeague = leagues.find(l => l.id === u.league_id);
+{section === 'users' && (
+  <div className="card">
+    <div style={{ fontWeight: 700, marginBottom: '1rem', fontSize: '1.1rem' }}>👥 System Users Management</div>
+    <input 
+      className="form-input" 
+      placeholder="Search users by name or email..." 
+      value={userSearch} 
+      onChange={e => setUserSearch(e.target.value)} 
+      style={{ marginBottom: '1rem' }}
+    />
+    <div className="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Username</th>
+            <th>Email</th>
+            <th>Phone</th>
+            <th>Role</th>
+            <th>League</th>
+            <th>Team</th>
+            <th>Status</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {filteredUsers.length === 0 ? (
+            <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--muted)', padding: '2rem' }}>No users found</td></tr>
+          ) : (
+            filteredUsers.map(u => {
+              const currentLeague = leagues.find(l => l.id === u.league_id);
+              // Check if user has a team
+              const userTeam = teams.find(t => t.user_id === u.id);
+              
+              return (
+                <tr key={u.id}>
+                  <td style={{ fontWeight: 600 }}>{u.username || '—'}</td>
+                  <td>{u.email || '—'}</td>
+                  <td>{u.phone || u.phone_number || '—'}</td>
+                  <td>
+                    <select 
+                      className="form-select" 
+                      value={u.role || 'user'} 
+                      onChange={e => setRole(u.id, e.target.value)}
+                      style={{ padding: '4px', minHeight: 'auto', fontSize: '0.85rem' }}
+                    >
+                      <option value="user">User</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                  </td>
+                  <td>
+                    <select 
+                      className="form-select" 
+                      value={u.league_id || ''} 
+                      onChange={async (e) => {
+                        const newLeagueId = e.target.value || null;
+                        const targetLeague = leagues.find(l => l.id === newLeagueId);
+                        
+                        if (newLeagueId) {
+                          const currentCount = users.filter(user => user.league_id === newLeagueId).length;
+                          if (targetLeague && currentCount >= (targetLeague.max_slots || 16)) {
+                            showMsg(`❌ ${targetLeague.name} is full (${currentCount}/${targetLeague.max_slots || 16})', 'danger');
+                            return;
+                          }
+                        }
+                        
+                        // Update user's league
+                        await rFetch('PATCH', `profiles?id=eq.${u.id}`, { league_id: newLeagueId }, { Prefer: 'return=minimal' });
+                        await rFetch('PATCH', `users?id=eq.${u.id}`, { league_id: newLeagueId }, { Prefer: 'return=minimal' });
+                        
+                        // If user has a team, update the team's league too
+                        const userTeam = teams.find(t => t.user_id === u.id);
+                        if (userTeam) {
+                          await rFetch('PATCH', `teams?id=eq.${userTeam.id}`, { league_id: newLeagueId }, { Prefer: 'return=minimal' });
+                        } else if (newLeagueId) {
+                          // Create a team for the user
+                          const teamName = prompt(`Enter team name for ${u.username}:`, `${u.username || 'Player'}'s Team`);
+                          if (teamName) {
+                            await rFetch('POST', 'teams', {
+                              name: teamName,
+                              user_id: u.id,
+                              league_id: newLeagueId,
+                              is_active: true,
+                              total_points: 0,
+                              wins: 0,
+                              draws: 0,
+                              losses: 0,
+                              matches_played: 0,
+                              goals_for: 0,
+                              goals_against: 0,
+                              goal_difference: 0
+                            }, { Prefer: 'return=minimal' });
+                          }
+                        }
+                        
+                        showMsg(`✅ ${u.username} assigned to ${targetLeague?.name || 'No League'}`);
+                        loadAll();
+                      }}
+                      style={{ padding: '4px', minHeight: 'auto', fontSize: '0.85rem' }}
+                    >
+                      <option value="">-- No League --</option>
+                      {leagues.map(l => {
+                        const count = users.filter(user => user.league_id === l.id).length;
+                        const isFull = count >= (l.max_slots || 16);
                         return (
-                          <tr key={u.id}>
-                            <td style={{ fontWeight: 600 }}>{u.username || '—'}</td>
-                            <td>{u.email || '—'}</td>
-                            <td>{u.phone || u.phone_number || '—'}</td>
-                            <td>
-                              <select 
-                                className="form-select" 
-                                value={u.role || 'user'} 
-                                onChange={e => setRole(u.id, e.target.value)}
-                                style={{ padding: '4px', minHeight: 'auto', fontSize: '0.85rem' }}
-                              >
-                                <option value="user">User</option>
-                                <option value="admin">Admin</option>
-                              </select>
-                            </td>
-                            <td>
-                              <select 
-                                className="form-select" 
-                                value={u.league_id || ''} 
-                                onChange={async (e) => {
-                                  const newLeagueId = e.target.value || null;
-                                  const targetLeague = leagues.find(l => l.id === newLeagueId);
-                                  
-                                  if (newLeagueId) {
-                                    const currentCount = users.filter(user => user.league_id === newLeagueId).length;
-                                    if (targetLeague && currentCount >= (targetLeague.max_slots || 16)) {
-                                      showMsg(`❌ ${targetLeague.name} is full (${currentCount}/${targetLeague.max_slots || 16})`, 'danger');
-                                      return;
-                                    }
-                                  }
-                                  
-                                  await rFetch('PATCH', `profiles?id=eq.${u.id}`, { league_id: newLeagueId }, { Prefer: 'return=minimal' });
-                                  await rFetch('PATCH', `users?id=eq.${u.id}`, { league_id: newLeagueId }, { Prefer: 'return=minimal' });
-                                  
-                                  showMsg(`✅ ${u.username} assigned to ${targetLeague?.name || 'No League'}`);
-                                  loadAll();
-                                }}
-                                style={{ padding: '4px', minHeight: 'auto', fontSize: '0.85rem' }}
-                              >
-                                <option value="">-- No League --</option>
-                                {leagues.map(l => {
-                                  const count = users.filter(user => user.league_id === l.id).length;
-                                  const isFull = count >= (l.max_slots || 16);
-                                  return (
-                                    <option key={l.id} value={l.id} disabled={isFull && u.league_id !== l.id}>
-                                      {l.name} ({count}/{l.max_slots || 16}) {isFull && u.league_id !== l.id ? '🔴' : ''}
-                                    </option>
-                                  );
-                                })}
-                              </select>
-                            </td>
-                            <td>
-                              <span className={`badge ${u.is_blocked ? 'badge-red' : 'badge-green'}`}>
-                                {u.is_blocked ? 'Blocked' : 'Active'}
-                              </span>
-                            </td>
-                            <td>
-                              <button 
-                                className={`btn btn-sm ${u.is_blocked ? 'btn-success' : 'btn-danger'}`}
-                                onClick={() => blockUser(u.id, !u.is_blocked)}
-                              >
-                                {u.is_blocked ? '🔓 Unblock' : '🚫 Block'}
-                              </button>
-                            </td>
-                          </tr>
+                          <option key={l.id} value={l.id} disabled={isFull && u.league_id !== l.id}>
+                            {l.name} ({count}/{l.max_slots || 16}) {isFull && u.league_id !== l.id ? '🔴' : ''}
+                          </option>
                         );
-                      })
+                      })}
+                    </select>
+                  </td>
+                  <td>
+                    {userTeam ? (
+                      <span className="badge badge-green">{userTeam.name}</span>
+                    ) : (
+                      <span className="badge badge-red">No Team</span>
                     )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+                  </td>
+                  <td>
+                    <span className={`badge ${u.is_blocked ? 'badge-red' : 'badge-green'}`}>
+                      {u.is_blocked ? 'Blocked' : 'Active'}
+                    </span>
+                  </td>
+                  <td>
+                    <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                      <button 
+                        className={`btn btn-sm ${u.is_blocked ? 'btn-success' : 'btn-danger'}`}
+                        onClick={() => blockUser(u.id, !u.is_blocked)}
+                      >
+                        {u.is_blocked ? '🔓' : '🚫'}
+                      </button>
+                      {!userTeam && u.league_id && (
+                        <button 
+                          className="btn btn-sm btn-primary"
+                          onClick={async () => {
+                            const teamName = prompt(`Enter team name for ${u.username}:`, `${u.username}'s Team`);
+                            if (teamName) {
+                              await rFetch('POST', 'teams', {
+                                name: teamName,
+                                user_id: u.id,
+                                league_id: u.league_id,
+                                is_active: true,
+                                total_points: 0,
+                                wins: 0,
+                                draws: 0,
+                                losses: 0,
+                                matches_played: 0,
+                                goals_for: 0,
+                                goals_against: 0,
+                                goal_difference: 0
+                              }, { Prefer: 'return=minimal' });
+                              showMsg(`✅ Team "${teamName}" created for ${u.username}`);
+                              loadAll();
+                            }
+                          }}
+                        >
+                          ➕ Team
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })
           )}
+        </tbody>
+      </table>
+    </div>
+  </div>
+)}
 
           {/* LOGS */}
           {section === 'logs' && (
