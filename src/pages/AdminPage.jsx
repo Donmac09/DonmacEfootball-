@@ -1,35 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { apiFetch, SUPABASE_URL, SUPABASE_KEY } from '../services/supabase';
 
-// Add this at the top of AdminPage.jsx (after imports)
-const logger = {
-  info: (message, data = null) => {
-    console.groupCollapsed(`ℹ️ [Admin] ${message}`);
-    if (data) console.log('📊', data);
-    console.groupEnd();
-  },
-  success: (message, data = null) => {
-    console.groupCollapsed(`✅ [Admin] ${message}`);
-    if (data) console.log('📊', data);
-    console.groupEnd();
-  },
-  error: (message, data = null) => {
-    console.groupCollapsed(`❌ [Admin] ${message}`);
-    if (data) console.log('📊', data);
-    if (data?.stack) console.log('📋 Stack:', data.stack);
-    console.groupEnd();
-  },
-  warn: (message, data = null) => {
-    console.groupCollapsed(`⚠️ [Admin] ${message}`);
-    if (data) console.log('📊', data);
-    console.groupEnd();
-  }
-};
-
-// Then replace all console.log/error with:
-// logger.info('Loading data', { count: 10 });
-// logger.error('Failed to load', error);
-
 const SECTIONS = [
   ['dashboard', '📊 Dashboard'],
   ['results', '⚠️ Results'],
@@ -84,66 +55,27 @@ export default function AdminPage({ user, profile }) {
   const [ppReason, setPpReason] = useState('');
   const [ppSearch, setPpSearch] = useState('');
 
-  // ========== FIXED: Better console logging with clear formatting ==========
-  const logWithStyle = (message, data = null, type = 'info') => {
-    const styles = {
-      info: 'color: #3b82f6; font-weight: bold;',
-      success: 'color: #22c55e; font-weight: bold;',
-      warning: 'color: #eab308; font-weight: bold;',
-      error: 'color: #ef4444; font-weight: bold;'
-    };
-    
-    const prefix = `[Admin]`;
-    console.groupCollapsed(`${prefix} ${message}`);
-    if (data) {
-      console.log(`%c📊 Data:`, 'color: #6b7280;', data);
-    }
-    console.groupEnd();
-  };
-
   async function rFetch(method, path, body, ex = {}) {
-  try {
-    logger.info(`${method} ${path}`, { body: body ? JSON.stringify(body) : null });
-    
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
-      method,
-      headers: {
-        apikey: SUPABASE_KEY,
-        Authorization: `Bearer ${SUPABASE_KEY}`,
-        'Content-Type': 'application/json',
-        ...ex,
-      },
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    });
-    
-    let d = null;
-    const text = await r.text();
-    try { d = JSON.parse(text); } catch { d = text; }
-    
-    if (!r.ok) {
-      logger.error(`API Error ${r.status} on ${path}`, {
-        status: r.status,
-        path,
+    try {
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
         method,
-        response: d
+        headers: {
+          apikey: SUPABASE_KEY,
+          Authorization: `Bearer ${SUPABASE_KEY}`,
+          'Content-Type': 'application/json',
+          ...ex,
+        },
+        body: body !== undefined ? JSON.stringify(body) : undefined,
       });
-    } else {
-      logger.success(`${method} ${path}`, { status: r.status });
-    }
-    
-    return { ok: r.ok, status: r.status, data: d };
-  } catch (error) {
-    logger.error(`Exception in rFetch`, { error, path, method });
-    return { ok: false, status: 500, data: null, error: error.message };
-  }
-}
-      // FIXED: Exception logging with stack trace
-      logWithStyle(`💥 Exception in rFetch`, {
-        error: error.message,
-        stack: error.stack,
-        path: path,
-        method: method
-      }, 'error');
+      let d = null;
+      const text = await r.text();
+      try { d = JSON.parse(text); } catch { d = text; }
+      if (!r.ok) {
+        console.error(`rFetch error ${r.status} on ${path}:`, d);
+      }
+      return { ok: r.ok, status: r.status, data: d };
+    } catch (error) {
+      console.error('rFetch exception:', error);
       return { ok: false, status: 500, data: null, error: error.message };
     }
   }
@@ -165,16 +97,13 @@ export default function AdminPage({ user, profile }) {
     try {
       const r = await apiFetch('GET', 'announcements?select=*&order=created_at.desc');
       setAnnouncements(Array.isArray(r.data) ? r.data : []);
-      logWithStyle('📢 Announcements loaded', { count: r.data?.length || 0 }, 'info');
     } catch (err) {
-      logWithStyle('Error loading announcements', err, 'error');
+      console.error('Error loading announcements:', err);
     }
   }, []);
 
   const loadAll = useCallback(async () => {
     try {
-      logWithStyle('🔄 Loading all admin data...', null, 'info');
-      
       const [l, t, c, e, u, lb, pf, pcf, pef, pfp] = await Promise.all([
         apiFetch('GET', 'leagues?select=*&order=country'),
         apiFetch('GET', 'teams?select=*&order=total_points.desc'),
@@ -226,16 +155,8 @@ export default function AdminPage({ user, profile }) {
         })),
       ];
       setPending(allPending);
-      
-      logWithStyle('✅ All data loaded successfully', {
-        leagues: l.data?.length || 0,
-        teams: t.data?.length || 0,
-        users: u.data?.length || 0,
-        pending: allPending.length
-      }, 'success');
-      
     } catch (error) {
-      logWithStyle('❌ loadAll error', error, 'error');
+      console.error('loadAll error:', error);
       showMsg('Error loading admin data: ' + error.message, 'danger');
     }
   }, []);
@@ -254,12 +175,9 @@ export default function AdminPage({ user, profile }) {
     setPointsHistory(Array.isArray(r.data) ? r.data : []);
   }
 
-  // ========== FIXED: Announcement Functions with better error handling ==========
+  // Announcement Functions
   async function saveAnnouncement() {
-    if (!annMessage.trim()) { 
-      showMsg('Announcement details cannot be empty', 'danger'); 
-      return; 
-    }
+    if (!annMessage.trim()) { showMsg('Announcement details cannot be empty', 'danger'); return; }
     
     if (editingAnnId) {
       const r = await rFetch('PATCH', `announcements?id=eq.${editingAnnId}`, { message: annMessage });
@@ -269,10 +187,8 @@ export default function AdminPage({ user, profile }) {
         setAnnMessage('');
         loadAnnouncements();
         logAction('edit_announcement', { id: editingAnnId });
-        logWithStyle('📝 Announcement edited', { id: editingAnnId, message: annMessage }, 'info');
       } else {
         showMsg('Failed to update announcement', 'danger');
-        logWithStyle('❌ Failed to update announcement', { error: r.data }, 'error');
       }
     } else {
       const r = await rFetch('POST', 'announcements', { message: annMessage, created_by: user.id });
@@ -281,10 +197,8 @@ export default function AdminPage({ user, profile }) {
         setAnnMessage('');
         loadAnnouncements();
         logAction('create_announcement');
-        logWithStyle('📢 New announcement created', { message: annMessage }, 'success');
       } else {
         showMsg('Failed to post announcement', 'danger');
-        logWithStyle('❌ Failed to create announcement', { error: r.data }, 'error');
       }
     }
   }
@@ -296,17 +210,14 @@ export default function AdminPage({ user, profile }) {
       showMsg('❌ Announcement deleted');
       loadAnnouncements();
       logAction('delete_announcement', { id });
-      logWithStyle('🗑️ Announcement deleted', { id }, 'warning');
     } else {
       showMsg('Failed to delete announcement', 'danger');
-      logWithStyle('❌ Failed to delete announcement', { error: r.data }, 'error');
     }
   }
 
   function handleEditAnnouncement(ann) {
     setEditingAnnId(ann.id);
     setAnnMessage(ann.message);
-    logWithStyle('✏️ Editing announcement', { id: ann.id, message: ann.message }, 'info');
   }
 
   async function assignLeagueToUser(uid, leagueId) {
@@ -322,10 +233,8 @@ export default function AdminPage({ user, profile }) {
       showMsg('🏟️ User league mapping updated successfully!');
       loadAll();
       logAction('assign_user_league', { uid, leagueId: targetLeague });
-      logWithStyle('🏟️ League assigned to user', { uid, leagueId: targetLeague }, 'success');
     } else {
       showMsg('Failed to assign league. Make sure league_id column exists on your profiles/users table.', 'danger');
-      logWithStyle('❌ Failed to assign league', { uid, leagueId: targetLeague, error: r.data }, 'error');
     }
   }
 
@@ -647,9 +556,7 @@ export default function AdminPage({ user, profile }) {
 
                 <div style={{ fontWeight: 600, fontSize: '0.9rem', marginBottom: '0.5rem' }}>Active Live Announcements ({announcements.length})</div>
                 {announcements.length === 0 ? (
-                  <div style={{ fontSize: '0.85rem', color: 'var(--muted)', fontStyle: 'italic' }}>
-                    No announcements published yet.
-                  </div>
+                  <div style={{ fontSize: '0.85rem', color: 'var(--muted)', fontStyle: 'italic' }}>No announcements published yet.</div>
                 ) : (
                   <div className="table-wrap">
                     <table>
@@ -849,7 +756,13 @@ export default function AdminPage({ user, profile }) {
                     <table>
                       <thead>
                         <tr>
-                          {['Player', 'Change', 'Before', 'After', 'Reason', 'Admin', 'Date'].map(h => <th key={h}>{h}</th>)}
+                          <th>Player</th>
+                          <th>Change</th>
+                          <th>Before</th>
+                          <th>After</th>
+                          <th>Reason</th>
+                          <th>Admin</th>
+                          <th>Date</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -870,7 +783,8 @@ export default function AdminPage({ user, profile }) {
                         ))}
                       </tbody>
                     </table>
-                  </div>}
+                  </div>
+                }
               </div>
             </div>
           )}
