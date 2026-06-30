@@ -16,6 +16,7 @@ export function AuthProvider({ children }) {
     }
     try {
       const p = await getProfile(uid);
+      console.log('Profile loaded:', p); // Debug log
       setProfile(p);
       return p;
     } catch (e) {
@@ -26,8 +27,13 @@ export function AuthProvider({ children }) {
   }, []);
 
   const refreshProfile = useCallback(async () => {
-    if (user) await loadProfile(user.id);
-  }, [user, loadProfile]);
+    if (user) {
+      const p = await getProfile(user.id);
+      console.log('Refreshed profile:', p); // Debug log
+      setProfile(p);
+      return p;
+    }
+  }, [user]);
 
   useEffect(() => {
     const timeout = setTimeout(() => setLoading(false), 3000);
@@ -38,6 +44,7 @@ export function AuthProvider({ children }) {
         sessionStore.session = session;
         setUser(session.user);
         const prof = await getProfile(session.user.id);
+        console.log('Session profile:', prof); // Debug log
         setProfile(prof);
       }
       setLoading(false);
@@ -48,6 +55,7 @@ export function AuthProvider({ children }) {
         sessionStore.session = session;
         setUser(session.user);
         const prof = await getProfile(session.user.id);
+        console.log('Auth state change profile:', prof); // Debug log
         setProfile(prof);
       } else {
         sessionStore.session = null;
@@ -65,6 +73,7 @@ export function AuthProvider({ children }) {
       if (data?.user) {
         setUser(data.user);
         const prof = await getProfile(data.user.id);
+        console.log('Sign in profile:', prof); // Debug log
         setProfile(prof);
       }
       return data;
@@ -79,6 +88,7 @@ export function AuthProvider({ children }) {
       if (data?.user) {
         setUser(data.user);
         const prof = await getProfile(data.user.id);
+        console.log('Sign up profile:', prof); // Debug log
         setProfile(prof);
       }
       return data;
