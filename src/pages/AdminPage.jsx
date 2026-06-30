@@ -55,9 +55,8 @@ export default function AdminPage({ user, profile }) {
   const [ppChange, setPpChange] = useState(0);
   const [ppReason, setPpReason] = useState('');
   const [ppSearch, setPpSearch] = useState('');
-  // Add after your other useState declarations
-const [seasonFilter, setSeasonFilter] = useState('');
-const uniqueSeasons = [...new Set(leagues.map(l => l.season).filter(Boolean))];
+  const [seasonFilter, setSeasonFilter] = useState('');
+  const uniqueSeasons = [...new Set(leagues.map(l => l.season).filter(Boolean))];
 
   // ========== PASTE THE CODE HERE ==========
   // Add this helper near the top of your component
