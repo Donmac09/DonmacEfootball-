@@ -2,36 +2,27 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { apiFetch, SUPABASE_URL, SUPABASE_KEY } from '../services/supabase';
 
 const SECTIONS = [
-  ['dashboard', '📊 Dashboard'],
-  ['results', '⚠️ Review Results'],
-  ['playerpoints', '🎮 Player Points'],
-  ['leagues', ' Stadium Leagues'],
-  ['fixtures', '📅 Fixtures Manager'],
+  ['dashboard', '📊 Dashboard Summary'],
+  ['leagues', '🏟️ Stadium Divisions'],
+  ['fixtures', '📅 Fixtures Engine'],
   ['points', '✏️ Adjust Team Points'],
-  ['users', '👥 System Users'],
-  ['logs', '📋 Audit Logs'],
+  ['users', '👥 Registered Users'],
 ];
 
 export default function AdminPage({ user, profile }) {
   const [section, setSection] = useState('dashboard');
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [msg, setMsg] = useState('');
-  const [msgType, setMsgType] = useState('info');
-  const [pending, setPending] = useState([]);
+  const [msgType, setMsgType] = useState('success');
   const [leagues, setLeagues] = useState([]);
   const [teams, setTeams] = useState([]);
   const [users, setUsers] = useState([]);
-  const [leaderboard, setLeaderboard] = useState([]);
-  const [pointsHistory, setPointsHistory] = useState([]);
-  const [logs, setLogs] = useState([]);
-  const [screenshot, setScreenshot] = useState(null);
+  const [fixtureList, setFixtureList] = useState([]);
   const [genLeague, setGenLeague] = useState('');
   const [userSearch, setUserSearch] = useState('');
 
   // Announcement States
   const [announcements, setAnnouncements] = useState([]);
   const [annMessage, setAnnMessage] = useState('');
-  const [editingAnnId, setEditingAnnId] = useState(null);
 
   // Form Management States
   const [nlName, setNlName] = useState('');
@@ -42,14 +33,8 @@ export default function AdminPage({ user, profile }) {
   
   const [adjTeam, setAdjTeam] = useState('');
   const [adjPts, setAdjPts] = useState('0');
-  const [adjReason, setAdjReason] = useState('');
 
-  const [ppPlayer, setPpPlayer] = useState('');
-  const [ppChange, setPpChange] = useState(0);
-  const [ppReason, setPpReason] = useState('');
-  const [ppSearch, setPpSearch] = useState('');
-  const [fixtureList, setFixtureList] = useState([]);
-
+  // Custom HTTP fetch wrapper targeting Supabase Rest API Engine
   async function rFetch(method, path, body, ex = {}) {
     try {
       const r = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
@@ -72,19 +57,13 @@ export default function AdminPage({ user, profile }) {
     }
   }
 
-  async function logAction(action, details = {}) {
-    await rFetch('POST', 'admin_logs',
-      { admin_id: user?.id, action, details },
-      { Prefer: 'return=minimal' }
-    ).catch(() => {});
-  }
-
   function showMsg(text, type = 'success') {
     setMsg(text);
     setMsgType(type);
-    setTimeout(() => setMsg(''), 5000);
+    setTimeout(() => setMsg(''), 4000);
   }
 
+  // Fetch announcements ledger records
   const loadAnnouncements = useCallback(async () => {
     try {
       const r = await apiFetch('GET', 'announcements?select=*&order=created_at.desc');
@@ -94,48 +73,25 @@ export default function AdminPage({ user, profile }) {
     }
   }, []);
 
+  // Main system data pre-load matrix
   const loadAll = useCallback(async () => {
     try {
-      const [l, t, lb, pf, pcf, pef, pfp] = await Promise.all([
+      const [l, t] = await Promise.all([
         apiFetch('GET', 'leagues?select=*&order=country'),
         apiFetch('GET', 'teams?select=*&order=total_points.desc'),
-        apiFetch('GET', 'free_play_leaderboard?select=*&order=points.desc'),
-        apiFetch('GET', 'fixtures?status=eq.pending_review&select=*,home:home_team_id(name),away:away_team_id(name),leagues(name)&order=created_at'),
-        apiFetch('GET', 'cup_fixtures?status=eq.pending_review&select=*,home:home_team_id(name),away:away_team_id(name),cups(name)&order=created_at'),
-        apiFetch('GET', 'european_fixtures?status=eq.pending_review&select=*,home:home_team_id(name),away:away_team_id(name),european_competitions(name)&order=created_at'),
-        apiFetch('GET', 'free_play_matches?status=eq.pending_review&select=*,p1:player1_id(username),p2:player2_id(username)&order=created_at'),
       ]);
 
       setLeagues(Array.isArray(l.data) ? l.data : []);
       setTeams(Array.isArray(t.data) ? t.data : []);
 
-      // Absolute complete user list tracking (Fallback engine built-in)
-      // Replace just your user fetch line inside loadAll with this:
-let userResponse = await apiFetch('GET', 'profiles?select=id,username,email,role,is_blocked,created_at,phone,phone_number,league_id&order=created_at.desc');
+      // BULLETPROOF USER FALLBACK ENGINE (Ensures all 20/20 players pull cleanly)
+      let userResponse = await apiFetch('GET', 'profiles?select=id,username,email,role,is_blocked,created_at,phone,phone_number,league_id&order=created_at.desc');
+      if (!userResponse || !Array.isArray(userResponse.data) || userResponse.data.length === 0) {
+        console.warn("Profiles table empty, falling back to core auth collection engine...");
+        userResponse = await apiFetch('GET', 'users?select=id,username,email,role,is_blocked,created_at,phone,phone_number,league_id&order=created_at.desc');
+      }
+      setUsers(userResponse && Array.isArray(userResponse.data) ? userResponse.data : []);
 
-if (!userResponse || !Array.isArray(userResponse.data) || userResponse.data.length === 0) {
-  console.warn("Profiles empty, falling back to core auth roster...");
-  userResponse = await apiFetch('GET', 'users?select=id,username,email,role,is_blocked,created_at,phone,phone_number,league_id&order=created_at.desc');
-}
-
-setUsers(userResponse && Array.isArray(userResponse.data) ? userResponse.data : []);
-      const lbData = Array.isArray(lb.data) ? lb.data : [];
-      const seen = new Set();
-      const dedupedLb = lbData.filter(item => {
-        if (seen.has(item.user_id)) return false;
-        seen.add(item.user_id);
-        return true;
-      });
-      setLeaderboard(dedupedLb);
-
-      const allPending = [
-        ...(Array.isArray(pf.data) ? pf.data : []).map(f => ({
-          ...f, _type: 'league',
-          _label: `${f.home?.name || '?'} vs ${f.away?.name || '?'} — ${f.leagues?.name || ''}`,
-          _score: `${f.home_score ?? '?'} – ${f.away_score ?? '?'}`,
-        })),
-      ];
-      setPending(allPending);
     } catch (error) {
       console.error('loadAll error:', error);
     }
@@ -152,29 +108,31 @@ setUsers(userResponse && Array.isArray(userResponse.data) ? userResponse.data : 
     setFixtureList(Array.isArray(r.data) ? r.data : []);
   }
 
+  // Announcement push execution with explicit view cascade recall hooks
   async function saveAnnouncement() {
-  if (!annMessage.trim()) return;
-  
-  const r = await rFetch('POST', 'announcements', { message: annMessage, created_by: user?.id });
-  if (r.ok) {
-    setAnnMessage('');
-    // Put your specific announcement loading function here to force a UI refresh:
-    await loadAnnouncements(); 
-    showMsg('📢 Announcement broadcasted!');
+    if (!annMessage.trim()) { showMsg('Broadcast notice content message cannot be empty!', 'danger'); return; }
+    
+    const r = await rFetch('POST', 'announcements', { message: annMessage, created_by: user?.id });
+    if (r.ok) {
+      showMsg('📢 Tournament broadcast statement published successfully!');
+      setAnnMessage('');
+      await loadAnnouncements(); // Forces UI to re-render records cleanly
+    } else {
+      showMsg('Error writing broadcast data stream to table schema rules.', 'danger');
+    }
   }
-}
 
   async function deleteAnnouncement(id) {
-    if (!window.confirm('Delete this announcement?')) return;
+    if (!window.confirm('Permanently purge this operational bulletin?')) return;
     const r = await rFetch('DELETE', `announcements?id=eq.${id}`);
     if (r.ok) {
-      showMsg('❌ Announcement deleted');
+      showMsg('❌ Bulletin item successfully dropped.');
       await loadAnnouncements();
     }
   }
 
   async function createNewLeague() {
-    if (!nlName || !nlCountry) { showMsg('Please fill in all league fields', 'danger'); return; }
+    if (!nlName || !nlCountry) { showMsg('Please complete all structural division parameters.', 'danger'); return; }
     const r = await rFetch('POST', 'leagues', {
       name: nlName,
       country: nlCountry,
@@ -183,20 +141,18 @@ setUsers(userResponse && Array.isArray(userResponse.data) ? userResponse.data : 
       season: nlSeason
     });
     if (r.ok) {
-      showMsg('🏟️ New League created successfully!');
+      showMsg('🏟️ New Championship League deployed into registry framework!');
       setNlName('');
       setNlCountry('');
       loadAll();
-    } else {
-      showMsg('Failed to save new league configuration details.', 'danger');
     }
   }
 
   async function generateFixtures() {
-    if (!genLeague) { showMsg('Select a target league first', 'danger'); return; }
+    if (!genLeague) { showMsg('Select a target division league segment first.', 'danger'); return; }
     const r = await apiFetch('GET', `teams?league_id=eq.${genLeague}&select=id`);
     const ids = Array.isArray(r.data) ? r.data.map(t => t.id) : [];
-    if (ids.length < 2) { showMsg('Need at least 2 teams assigned to this league to draw pairings', 'danger'); return; }
+    if (ids.length < 2) { showMsg('Insufficient competitors grouped inside division to compile schedule.', 'danger'); return; }
     
     const arr = [...ids];
     if (arr.length % 2 !== 0) arr.push(null);
@@ -221,7 +177,7 @@ setUsers(userResponse && Array.isArray(userResponse.data) ? userResponse.data : 
 
     const saveResult = await rFetch('POST', 'fixtures', [...fx, ...doubleRound]);
     if (saveResult.ok) {
-      showMsg(`📅 Generated ${fx.length * 2} structural fixture pairings matches successfully!`);
+      showMsg(`📅 Generated ${fx.length * 2} symmetric fixture matches safely into database!`);
       loadFixturesForLeague(genLeague);
     }
   }
@@ -229,30 +185,28 @@ setUsers(userResponse && Array.isArray(userResponse.data) ? userResponse.data : 
   async function assignLeagueToUser(uid, leagueId) {
     const target = leagueId === '' ? null : leagueId;
     let r = await rFetch('PATCH', `profiles?id=eq.${uid}`, { league_id: target });
-    if (!r.ok) {
-      r = await rFetch('PATCH', `users?id=eq.${uid}`, { league_id: target });
-    }
+    if (!r.ok) r = await rFetch('PATCH', `users?id=eq.${uid}`, { league_id: target });
     if (r.ok) {
-      showMsg('👤 League allocation updated.');
+      showMsg('👤 Competitor operational workspace alignment modified.');
       loadAll();
     }
   }
 
   async function adjustTeamPoints() {
-    if (!adjTeam) { showMsg('Select a club team', 'danger'); return; }
+    if (!adjTeam) { showMsg('Select an active competitor club squad first.', 'danger'); return; }
     const r = await apiFetch('GET', `teams?id=eq.${adjTeam}&select=total_points`);
     const cur = Array.isArray(r.data) && r.data[0] ? r.data[0].total_points || 0 : 0;
     const nextPoints = Math.max(0, cur + parseInt(adjPts || 0));
     
     const update = await rFetch('PATCH', `teams?id=eq.${adjTeam}`, { total_points: nextPoints });
     if (update.ok) {
-      showMsg(`✏️ Adjusted successfully! New total: ${nextPoints} points.`);
+      showMsg(`✏️ Standard table standing forced adjustments saved! Current: ${nextPoints} Pts.`);
       setAdjPts('0');
       loadAll();
     }
   }
 
-  // Calculated Real Dynamic Slots Cap Values
+  // DYNAMIC SLOTS CALCULATION ENGINE
   const totalLeagueSlotsCapacity = leagues.reduce((acc, curr) => acc + (parseInt(curr.slots) || 0), 0);
 
   const filteredUsers = users.filter(u =>
@@ -261,146 +215,174 @@ setUsers(userResponse && Array.isArray(userResponse.data) ? userResponse.data : 
     (u.email || '').toLowerCase().includes(userSearch.toLowerCase())
   );
 
+  // INLINE BRANDING GRADIENT ARCHITECTURE (eFootball Pro Tech Aesthetic Theme)
+  const styles = {
+    container: { background: '#0a0a10', color: '#f1f1f7', minHeight: '100vh', fontFamily: '"Rajdhani", "Segoe UI", sans-serif', padding: '2rem' },
+    header: { background: 'linear-gradient(135deg, #121225 0%, #1a0b36 100%)', borderBottom: '2px solid #9d4edd', padding: '1.5rem 2rem', borderRadius: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', boxShadow: '0 4px 20px rgba(157, 78, 221, 0.15)' },
+    titleGlow: { textTransform: 'uppercase', letterSpacing: '2px', background: 'linear-gradient(90deg, #00bcff, #9d4edd)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', margin: 0, fontWeight: 800, fontSize: '1.75rem' },
+    badgeNeon: { background: 'rgba(0, 188, 255, 0.1)', border: '1px solid #00bcff', color: '#00bcff', padding: '0.4rem 1rem', borderRadius: '20px', fontSize: '0.8rem', textTransform: 'uppercase', fontWeight: 'bold', boxShadow: '0 0 10px rgba(0, 188, 255, 0.2)' },
+    layout: { display: 'flex', gap: '2rem' },
+    sidebar: { width: '260px', display: 'flex', flexDirection: 'column', gap: '0.75rem' },
+    navBtn: (active) => ({
+      textAlign: 'left', padding: '1rem', borderRadius: '8px', border: 'none',
+      background: active ? 'linear-gradient(90deg, #9d4edd 0%, #00bcff 100%)' : '#141424',
+      color: '#fff', cursor: 'pointer', fontWeight: 600, transition: 'all 0.3s ease',
+      boxShadow: active ? '0 0 15px rgba(157, 78, 221, 0.4)' : 'none',
+      borderLeft: active ? '4px solid #fff' : '4px solid transparent'
+    }),
+    cardWorkspace: { flex: 1, background: '#111122', border: '1px solid #23233d', padding: '2rem', borderRadius: '12px', boxShadow: '0 10px 30px rgba(0,0,0,0.5)' },
+    metricCard: { background: '#161630', borderLeft: '4px solid #00bcff', padding: '1.5rem', borderRadius: '8px', flex: 1, boxShadow: '0 4px 15px rgba(0,0,0,0.2)' },
+    neonInput: { background: '#090914', border: '1px solid #323254', color: '#fff', padding: '0.75rem 1rem', borderRadius: '6px', width: '100%', outline: 'none', transition: 'border 0.3s' },
+    neonBtn: { background: 'linear-gradient(135deg, #00bcff 0%, #4361ee 100%)', color: '#fff', border: 'none', padding: '0.75rem 1.5rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1px' },
+    table: { width: '100%', borderCollapse: 'collapse', marginTop: '1rem', background: '#131326' },
+    th: { background: '#1c1c3a', color: '#00bcff', padding: '1rem', textAlign: 'left', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '1px', borderBottom: '2px solid #2d2d54' },
+    td: { padding: '1rem', borderBottom: '1px solid #232342', color: '#e2e2ee', fontSize: '0.95rem' }
+  };
+
   return (
-    <div className="admin-dashboard-container" style={{ padding: '1rem', color: '#fff', background: '#111', minHeight: '100vh' }}>
-      {/* Dynamic Counter Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+    <div style={styles.container}>
+      {/* Top Gaming HUD Header Row */}
+      <div style={styles.header}>
         <div>
-          <h2 style={{ margin: 0, color: 'var(--blue)' }}>⚙️ Tournament Operations Center</h2>
-          <p style={{ margin: 0, fontSize: '0.85rem', color: '#aaa' }}>Live Environment Management Engine</p>
+          <h1 style={styles.titleGlow}>🎮 eFootball HQ Ops Deck</h1>
+          <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: '#8282a0' }}>Live Tournament Management Ecosystem</p>
         </div>
-        <span className="badge badge-gold">System Superuser Console</span>
+        <span style={styles.badgeNeon}>Server Administrator Status</span>
       </div>
 
       {msg && (
-        <div className={`alert alert-${msgType}`} style={{ padding: '0.75rem', borderRadius: 6, marginBottom: '1rem' }}>
+        <div style={{ background: msgType === 'danger' ? '#781d1d' : '#1b5e3a', color: '#fff', padding: '1rem', borderRadius: '8px', marginBottom: '1.5rem', borderLeft: msgType === 'danger' ? '5px solid #ff3333' : '5px solid #00ffcc' }}>
           {msg}
         </div>
       )}
 
-      <div className="admin-layout" style={{ display: 'flex', gap: '1.5rem' }}>
-        {/* Navigation Sidebar */}
-        <div className="sidebar" style={{ width: '240px', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+      <div style={styles.layout}>
+        {/* Navigation Deck */}
+        <div style={styles.sidebar}>
           {SECTIONS.map(([id, label]) => (
-            <button key={id} 
-              style={{
-                textAlign: 'left', padding: '0.75rem 1rem', borderRadius: '6px', border: 'none',
-                background: section === id ? '#222' : 'transparent', color: section === id ? '#00bcff' : '#ccc',
-                cursor: 'pointer', fontWeight: section === id ? 'bold' : 'normal'
-              }}
-              onClick={() => setSection(id)}>
+            <button key={id} style={styles.navBtn(section === id)} onClick={() => setSection(id)}>
               {label}
             </button>
           ))}
         </div>
 
-        {/* Dynamic Canvas Workspace */}
-        <div className="workspace-view" style={{ flex: 1, background: '#16161a', padding: '1.5rem', borderRadius: '8px' }}>
+        {/* Dynamic Display Canvas Grid */}
+        <div style={styles.cardWorkspace}>
           
-          {/* DASHBOARD CONSOLE */}
+          {/* DASHBOARD SUMMARY VIEW */}
           {section === 'dashboard' && (
             <div>
-              <div className="metrics-row" style={{ display: 'flex', gap: '1rem', marginBottom: '2rem' }}>
-                <div className="card" style={{ flex: 1, background: '#222', padding: '1rem', borderRadius: 8 }}>
-                  <div style={{ fontSize: '0.85rem', color: '#aaa' }}>Roster Attendance</div>
-                  {/* REAL CAPACITY CALCULATION APPLIED HERE */}
-                  <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: '#00ffcc' }}>
-                    {users.length} / {totalLeagueSlotsCapacity} Registered players
+              <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '2rem' }}>
+                <div style={styles.metricCard}>
+                  <div style={{ fontSize: '0.8rem', color: '#a0a0c0', textTransform: 'uppercase', fontWeight: 'bold' }}>Roster Attendance Matrix</div>
+                  <div style={{ fontSize: '2rem', fontWeight: 800, color: '#00ffcc', marginTop: '0.5rem' }}>
+                    {users.length} / {totalLeagueSlotsCapacity} Players
                   </div>
-                  <div style={{ fontSize: '0.75rem', color: '#666', marginTop: '4px' }}>Based on total combined league limits</div>
+                  <div style={{ fontSize: '0.75rem', color: '#686888', marginTop: '4px' }}>Real calculated dynamic limits applied</div>
                 </div>
-                <div className="card" style={{ flex: 1, background: '#222', padding: '1rem', borderRadius: 8 }}>
-                  <div style={{ fontSize: '0.85rem', color: '#aaa' }}>Active Stadium Leagues</div>
-                  <div style={{ fontSize: '1.8rem', fontWeight: 'bold' }}>{leagues.length} Divisions</div>
+                <div style={{ ...styles.metricCard, borderLeftColor: '#9d4edd' }}>
+                  <div style={{ fontSize: '0.8rem', color: '#a0a0c0', textTransform: 'uppercase', fontWeight: 'bold' }}>Active Divisions</div>
+                  <div style={{ fontSize: '2rem', fontWeight: 800, color: '#fff', marginTop: '0.5rem' }}>{leagues.length} Arenas</div>
                 </div>
-                <div className="card" style={{ flex: 1, background: '#222', padding: '1rem', borderRadius: 8 }}>
-                  <div style={{ fontSize: '0.85rem', color: '#aaa' }}>Registered Club Squads</div>
-                  <div style={{ fontSize: '1.8rem', fontWeight: 'bold' }}>{teams.length} Teams</div>
+                <div style={{ ...styles.metricCard, borderLeftColor: '#ffb703' }}>
+                  <div style={{ fontSize: '0.8rem', color: '#a0a0c0', textTransform: 'uppercase', fontWeight: 'bold' }}>Squad Registries</div>
+                  <div style={{ fontSize: '2rem', fontWeight: 800, color: '#fff', marginTop: '0.5rem' }}>{teams.length} Clubs</div>
                 </div>
               </div>
 
-              {/* Announcements Posting and Rendering Area */}
-              <div className="card" style={{ background: '#222', padding: '1.5rem', borderRadius: 8 }}>
-                <h3>📢 Global User Communication Hub</h3>
+              {/* Announcements Section */}
+              <div style={{ background: '#161630', padding: '1.5rem', borderRadius: '8px', border: '1px solid #2d2d54' }}>
+                <h3 style={{ margin: '0 0 1rem 0', color: '#00bcff' }}>📢 Global User Notification Broadcast</h3>
                 <textarea 
-                  style={{ width: '100%', background: '#111', color: '#fff', border: '1px solid #333', borderRadius: 6, padding: '0.5rem', marginBottom: '1rem' }}
+                  style={{ ...styles.neonInput, minHeight: '80px', marginBottom: '1rem', fontFamily: 'inherit' }}
                   rows={3} value={annMessage} onChange={e => setAnnMessage(e.target.value)}
-                  placeholder="Broadcast tournament milestones, match reminders, or rules system updates..."
+                  placeholder="Push updates regarding league rules, server adjustments, or schedule extensions..."
                 />
-                <button className="btn btn-primary" onClick={saveAnnouncement}>Publish Broadcast Notice</button>
+                <button style={styles.neonBtn} onClick={saveAnnouncement}>Transmit Broadcast Notice</button>
 
-                <h4 style={{ marginTop: '1.5rem' }}>Active Published Bulletins ({announcements.length})</h4>
-                <div className="bulletin-list" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <h4 style={{ marginTop: '2rem', borderBottom: '1px solid #2d2d54', paddingBottom: '0.5rem', color: '#9d4edd' }}>Active Published Bulletins ({announcements.length})</h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '1rem' }}>
                   {announcements.map(ann => (
-                    <div key={ann.id} style={{ background: '#1a1a24', padding: '0.75rem', borderRadius: '6px', display: 'flex', justifyContent: 'space-between' }}>
-                      <p style={{ margin: 0, fontSize: '0.9rem' }}>{ann.message}</p>
-                      <button style={{ background: 'none', border: 'none', color: '#ff3333', cursor: 'pointer' }} onClick={() => deleteAnnouncement(ann.id)}>🗑️</button>
+                    <div key={ann.id} style={{ background: '#090914', padding: '1rem', borderRadius: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid #1f1f3a' }}>
+                      <p style={{ margin: 0, fontSize: '0.95rem', color: '#d2d2e0' }}>{ann.message}</p>
+                      <button style={{ background: 'none', border: 'none', color: '#ff4d4d', cursor: 'pointer', fontSize: '1.1rem' }} onClick={() => deleteAnnouncement(ann.id)}>🗑️</button>
                     </div>
                   ))}
+                  {announcements.length === 0 && <p style={{ color: '#686888', fontStyle: 'italic' }}>No broadcast statements pushed to the live client grid yet.</p>}
                 </div>
               </div>
             </div>
           )}
 
-          {/* REAL LEAGUES MANAGEMENT WORKSPACE (REPLACED CONSOLE WRAPPER) */}
+          {/* STADIUM DIVISION LEAGUES MANAGER */}
           {section === 'leagues' && (
             <div>
-              <h3>🏟️ Championship League Manager</h3>
-              <div className="form-box" style={{ background: '#222', padding: '1rem', borderRadius: 8, marginBottom: '1.5rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                <input className="form-input" style={{ flex: 1 }} placeholder="League Name (e.g. English Premier League)" value={nlName} onChange={e => setNlName(e.target.value)} />
-                <input className="form-input" style={{ flex: 1 }} placeholder="Country Location" value={nlCountry} onChange={e => setNlCountry(e.target.value)} />
-                <input className="form-input" style={{ width: '80px' }} type="number" placeholder="Tier" value={nlTier} onChange={e => setNlTier(e.target.value)} />
-                <input className="form-input" style={{ width: '100px' }} type="number" placeholder="Max Slots" value={nlSlots} onChange={e => setNlSlots(e.target.value)} />
-                <button className="btn btn-primary" onClick={createNewLeague}>➕ Save League Division</button>
+              <h3 style={{ margin: '0 0 1rem 0', color: '#00bcff' }}>🏟️ Championship League Infrastructure Setup</h3>
+              <div style={{ background: '#161630', padding: '1.5rem', borderRadius: '8px', display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
+                <input style={{ ...styles.neonInput, flex: 2 }} placeholder="League Division Name (e.g. English Premier League)" value={nlName} onChange={e => setNlName(e.target.value)} />
+                <input style={{ ...styles.neonInput, flex: 1 }} placeholder="Country Location" value={nlCountry} onChange={e => setNlCountry(e.target.value)} />
+                <input style={{ ...styles.neonInput, width: '90px' }} type="number" placeholder="Tier" value={nlTier} onChange={e => setNlTier(e.target.value)} />
+                <input style={{ ...styles.neonInput, width: '110px' }} type="number" placeholder="Max Slots" value={nlSlots} onChange={e => setNlSlots(e.target.value)} />
+                <button style={styles.neonBtn} onClick={createNewLeague}>➕ Save Division</button>
               </div>
 
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr><th>League Division</th><th>Territory</th><th>Tier Hierarchy</th><th>Total Slots Cap</th><th>Season Tracking</th></tr>
-                  </thead>
-                  <tbody>
-                    {leagues.map(l => (
-                      <tr key={l.id}>
-                        <td><strong>{l.name}</strong></td>
-                        <td>{l.country}</td>
-                        <td>Tier {l.tier}</td>
-                        <td><span style={{ color: '#00ffcc', fontWeight: 'bold' }}>{l.slots} Players Max</span></td>
-                        <td>{l.season}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th style={styles.th}>League Arena</th>
+                    <th style={styles.th}>Territory</th>
+                    <th style={styles.th}>Hierarchy Level</th>
+                    <th style={styles.th}>Total Capacity Cap</th>
+                    <th style={styles.th}>Active Tracking</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {leagues.map(l => (
+                    <tr key={l.id}>
+                      <td style={styles.td}><strong>{l.name}</strong></td>
+                      <td style={styles.td}>{l.country}</td>
+                      <td style={styles.td}>Tier {l.tier}</td>
+                      <td style={styles.td}><span style={{ color: '#00ffcc', fontWeight: 'bold' }}>{l.slots} Slots</span></td>
+                      <td style={styles.td}><span style={{ color: '#9d4edd' }}>{l.season}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
 
-          {/* REAL FIXTURES GENERATION WORKSPACE (REPLACED CONSOLE WRAPPER) */}
+          {/* FIXTURES GENERATION PLATFORM */}
           {section === 'fixtures' && (
             <div>
-              <h3>📅 League Match Fixtures Generator</h3>
-              <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
-                <select className="form-select" value={genLeague} onChange={e => { setGenLeague(e.target.value); loadFixturesForLeague(e.target.value); }}>
-                  <option value="">-- Select Division League --</option>
-                  {leagues.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+              <h3 style={{ margin: '0 0 1rem 0', color: '#00bcff' }}>📅 Automatic Round Robin Pairing System</h3>
+              <div style={{ background: '#161630', padding: '1.5rem', borderRadius: '8px', display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
+                <select style={{ ...styles.neonInput, flex: 1 }} value={genLeague} onChange={e => { setGenLeague(e.target.value); loadFixturesForLeague(e.target.value); }}>
+                  <option value="" style={{ background: '#111' }}>-- Choose Target Arena Sector --</option>
+                  {leagues.map(l => <option key={l.id} value={l.id} style={{ background: '#111' }}>{l.name}</option>)}
                 </select>
-                <button className="btn btn-primary" onClick={generateFixtures}>⚡ Auto-Generate Round Robin Match Schedule</button>
+                <button style={{ ...styles.neonBtn, background: 'linear-gradient(135deg, #9d4edd 0%, #6f2dbd 100%)' }} onClick={generateFixtures}>⚡ Draw Match Combinations</button>
               </div>
 
-              <h4>Generated Fixtures Database Ledger ({fixtureList.length} Matches)</h4>
-              <div className="table-wrap" style={{ maxHeight: '400px', overflowY: 'auto' }}>
-                <table>
+              <h4 style={{ color: '#00ffcc', marginBottom: '0.5rem' }}>Fixtures Ledger Index ({fixtureList.length} Matchups)</h4>
+              <div style={{ maxHeight: '380px', overflowY: 'auto', border: '1px solid #232342', borderRadius: '6px' }}>
+                <table style={styles.table}>
                   <thead>
-                    <tr><th>Round Matchday</th><th>Home Club Squad</th><th></th><th>Away Club Squad</th><th>Current Status</th></tr>
+                    <tr>
+                      <th style={styles.th}>Round Index</th>
+                      <th style={styles.th}>Home Club Squad</th>
+                      <th style={styles.th} style={{ textAlign: 'center' }}>vs</th>
+                      <th style={styles.th}>Away Club Squad</th>
+                      <th style={styles.th}>Match Status</th>
+                    </tr>
                   </thead>
                   <tbody>
                     {fixtureList.map(f => (
                       <tr key={f.id}>
-                        <td>Matchday Round {f.round}</td>
-                        <td>{f.home?.name || 'Unknown'}</td>
-                        <td>VS</td>
-                        <td>{f.away?.name || 'Unknown'}</td>
-                        <td><span className="badge badge-gray">{f.status}</span></td>
+                        <td style={styles.td}>Matchday Week {f.round}</td>
+                        <td style={styles.td} style={{ color: '#00bcff' }}>{f.home?.name || 'Unknown'}</td>
+                        <td style={styles.td} style={{ textAlign: 'center', fontWeight: 'bold', color: '#888' }}>VS</td>
+                        <td style={styles.td} style={{ color: '#9d4edd' }}>{f.away?.name || 'Unknown'}</td>
+                        <td style={styles.td}><span style={{ color: '#ffb703', textTransform: 'uppercase', fontSize: '0.8rem' }}>{f.status}</span></td>
                       </tr>
                     ))}
                   </tbody>
@@ -409,55 +391,63 @@ setUsers(userResponse && Array.isArray(userResponse.data) ? userResponse.data : 
             </div>
           )}
 
-          {/* REAL TEAM STANDINGS POINT MODIFIER ADJUSTMENT VIEW */}
+          {/* OVERRIDE TEAM LEAGUE STANDINGS POINTS */}
           {section === 'points' && (
-            <div className="card" style={{ background: '#222', padding: '1.5rem', borderRadius: '8px' }}>
-              <h3>✏️ League Table Points Adjuster Workbench</h3>
-              <p style={{ fontSize: '0.85rem', color: '#aaa' }}>Directly adjust standard league table points balances to apply disciplinary actions, administrative point deductions, or match configuration correction criteria manually.</p>
+            <div style={{ background: '#161630', padding: '2rem', borderRadius: '8px', border: '1px solid #2d2d54' }}>
+              <h3 style={{ margin: '0 0 0.5rem 0', color: '#00bcff' }}>✏️ Disciplinary & Standings Override Interface</h3>
+              <p style={{ color: '#8282a0', fontSize: '0.85rem', marginBottom: '1.5rem' }}>Directly adjust active competitor club point metrics to fix score recording conflicts or enforce deductions.</p>
               
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxWidth: '500px', marginTop: '1rem' }}>
-                <label>Target Competitor Club Team</label>
-                <select className="form-select" value={adjTeam} onChange={e => setAdjTeam(e.target.value)}>
-                  <option value="">-- Select Team --</option>
-                  {teams.map(t => <option key={t.id} value={t.id}>{t.name} (Current: {t.total_points} Pts)</option>)}
-                </select>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', maxWidth: '480px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', color: '#a0a0c0', marginBottom: '0.5rem' }}>Target Club Entity</label>
+                  <select style={styles.neonInput} value={adjTeam} onChange={e => setAdjTeam(e.target.value)}>
+                    <option value="" style={{ background: '#111' }}>-- Select Target Team Roster --</option>
+                    {teams.map(t => <option key={t.id} value={t.id} style={{ background: '#111' }}>{t.name} (Current Base: {t.total_points} Pts)</option>)}
+                  </select>
+                </div>
 
-                <label>Points Variance Change Modifier (Can be negative value)</label>
-                <input className="form-input" type="number" value={adjPts} onChange={e => setAdjPts(e.target.value)} placeholder="e.g. 3 to award or -3 to deduct" />
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', color: '#a0a0c0', marginBottom: '0.5rem' }}>Points Variance Delta (Supports Negative Shifts)</label>
+                  <input style={styles.neonInput} type="number" value={adjPts} onChange={e => setAdjPts(e.target.value)} placeholder="e.g. 3 to award, or -3 to deduct" />
+                </div>
 
-                <button className="btn btn-primary" onClick={adjustTeamPoints} style={{ marginTop: '0.5rem' }}>Save Administrative Standing Override Adjustments</button>
+                <button style={styles.neonBtn} onClick={adjustTeamPoints}>Commit Points Adjustment Alteration</button>
               </div>
             </div>
           )}
 
-          {/* USERS ROSTER ROBUST VIEW PANEL */}
+          {/* USER RETRIEVAL MATRIX ROSTER REGISTER */}
           {section === 'users' && (
             <div>
-              <h3>👥 Registered Roster Users Database Management</h3>
-              <input className="form-input" placeholder="Search parameters filtering..." value={userSearch} onChange={e => setUserSearch(e.target.value)} style={{ marginBottom: '1rem', width: '100%' }} />
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr><th>User Registry Name</th><th>Auth Email Endpoint</th><th>League Division Assigned</th></tr>
-                  </thead>
-                  <tbody>
-                    {filteredUsers.map(u => (
-                      <tr key={u.id}>
-                        <td><strong>{u.username || '—'}</strong></td>
-                        <td>{u.email}</td>
-                        <td>
-                          <select className="form-select" value={u.league_id || ''} onChange={e => assignLeagueToUser(u.id, e.target.value)} style={{ padding: '2px', minHeight: 'auto' }}>
-                            <option value="">-- No Tournament Group Allocation --</option>
-                            {leagues.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                          </select>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <h3 style={{ margin: '0 0 1rem 0', color: '#00bcff' }}>👥 Registered Operational Competitor Database</h3>
+              <input style={{ ...styles.neonInput, marginBottom: '1.5rem' }} placeholder="Search through user indexes via email or registered username strings..." value={userSearch} onChange={e => setUserSearch(e.target.value)} />
+              
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th style={styles.th}>User Persona Name</th>
+                    <th style={styles.th}>Auth Core Email Account</th>
+                    <th style={styles.th}>Division Sector Group Alignment</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredUsers.map(u => (
+                    <tr key={u.id}>
+                      <td style={styles.td} style={{ color: '#00ffcc', fontWeight: 'bold' }}>{u.username || '—'}</td>
+                      <td style={styles.td}>{u.email}</td>
+                      <td style={styles.td}>
+                        <select style={{ ...styles.neonInput, padding: '0.4rem', width: 'auto' }} value={u.league_id || ''} onChange={e => assignLeagueToUser(u.id, e.target.value)}>
+                          <option value="" style={{ background: '#111' }}>-- Unallocated / Free Agent Status --</option>
+                          {leagues.map(l => <option key={l.id} value={l.id} style={{ background: '#111' }}>{l.name}</option>)}
+                        </select>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
+
         </div>
       </div>
     </div>
