@@ -88,7 +88,7 @@ export default function MyTeamPage({ user, profile }) {
   }, [user]);
 
   async function loadFixtures(teamId) {
-    const r = await apiFetch('GET', `fixtures?or=(home_team_id.eq.${teamId},away_team_id.eq.${teamId})&select=*,home:home_team_id(name,user_id),away:away_team_id(name,user_id)&order=round`);
+    const r = await apiFetch('GET', `fixtures?or=(home_team_id.eq.${teamId},away_team_id.eq.${teamId})&select=*,home:home_team_id(name,user_id),away:away_team_id(name,user_id)&order=scheduled_date`);
     const data = Array.isArray(r.data) ? r.data : [];
     setFixtures(data.map(f => ({
       ...f,
@@ -106,6 +106,12 @@ export default function MyTeamPage({ user, profile }) {
     } else setMsg('Error: ' + (r.data?.message || 'Could not create team'));
   }
 
+  function formatDate(dateString) {
+    if (!dateString) return null;
+    const date = new Date(dateString);
+    return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+  }
+
   const canSubmit = f => f.status === 'pending' && (f._homeUserId === user.id || f._awayUserId === user.id);
   const upcoming    = fixtures.filter(f => f.status === 'pending');
   const underReview = fixtures.filter(f => f.status === 'pending_review');
@@ -113,19 +119,26 @@ export default function MyTeamPage({ user, profile }) {
 
   function FixtureRow({ f }) {
     return (
-      <div className="card" style={{ marginBottom: 8, padding: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1 }}>
+      <div className="card" style={{ marginBottom: 8, padding: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: '200px' }}>
           <div style={{ textAlign: 'right', flex: 1, fontWeight: f._isHome ? 700 : 400, fontSize: '.875rem' }}>{f.home?.name || 'TBD'}</div>
           <div style={{ padding: '0 12px', fontWeight: 700, color: f.status === 'approved' ? 'var(--yellow)' : 'var(--muted)', whiteSpace: 'nowrap' }}>
             {f.status === 'approved' ? `${f.home_score} – ${f.away_score}` : f.status === 'pending_review' ? '? – ?' : 'vs'}
           </div>
           <div style={{ flex: 1, fontWeight: !f._isHome ? 700 : 400, fontSize: '.875rem' }}>{f.away?.name || 'TBD'}</div>
         </div>
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
-          <span className={`badge ${f.status === 'approved' ? 'badge-green' : f.status === 'pending_review' ? 'badge-warn' : 'badge-gray'}`}>
-            {f.status === 'approved' ? '✓' : f.status === 'pending_review' ? '⏳' : `R${f.round}`}
-          </span>
-          {canSubmit(f) && <button className="btn btn-primary btn-sm" onClick={() => setSubmitTarget(f)}>📤 Submit</button>}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
+          {f.scheduled_date && (
+            <div style={{ fontSize: '0.7rem', color: 'var(--blue)' }}>
+              📅 {formatDate(f.scheduled_date)}
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <span className={`badge ${f.status === 'approved' ? 'badge-green' : f.status === 'pending_review' ? 'badge-warn' : 'badge-gray'}`}>
+              {f.status === 'approved' ? '✓' : f.status === 'pending_review' ? '⏳' : `R${f.round}`}
+            </span>
+            {canSubmit(f) && <button className="btn btn-primary btn-sm" onClick={() => setSubmitTarget(f)}>📤 Submit</button>}
+          </div>
         </div>
       </div>
     );
