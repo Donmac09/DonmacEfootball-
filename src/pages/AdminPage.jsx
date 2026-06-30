@@ -55,6 +55,26 @@ export default function AdminPage({ user, profile }) {
   const [ppReason, setPpReason] = useState('');
   const [ppSearch, setPpSearch] = useState('');
 
+  // ========== CLEAN CONSOLE LOGGING ==========
+  const logger = {
+    info: (message, data = null) => {
+      console.groupCollapsed(`ℹ️ [Admin] ${message}`);
+      if (data) console.log('📊', data);
+      console.groupEnd();
+    },
+    success: (message, data = null) => {
+      console.groupCollapsed(`✅ [Admin] ${message}`);
+      if (data) console.log('📊', data);
+      console.groupEnd();
+    },
+    error: (message, data = null) => {
+      console.groupCollapsed(`❌ [Admin] ${message}`);
+      if (data) console.log('📊', data);
+      if (data?.stack) console.log('📋 Stack:', data.stack);
+      console.groupEnd();
+    }
+  };
+
   async function rFetch(method, path, body, ex = {}) {
     try {
       const r = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
@@ -71,11 +91,11 @@ export default function AdminPage({ user, profile }) {
       const text = await r.text();
       try { d = JSON.parse(text); } catch { d = text; }
       if (!r.ok) {
-        console.error(`rFetch error ${r.status} on ${path}:`, d);
+        logger.error(`API Error ${r.status} on ${path}`, { status: r.status, path, method, response: d });
       }
       return { ok: r.ok, status: r.status, data: d };
     } catch (error) {
-      console.error('rFetch exception:', error);
+      logger.error('Exception in rFetch', { error, path, method });
       return { ok: false, status: 500, data: null, error: error.message };
     }
   }
@@ -97,19 +117,28 @@ export default function AdminPage({ user, profile }) {
     try {
       const r = await apiFetch('GET', 'announcements?select=*&order=created_at.desc');
       setAnnouncements(Array.isArray(r.data) ? r.data : []);
+      logger.info('Announcements loaded', { count: r.data?.length || 0 });
     } catch (err) {
-      console.error('Error loading announcements:', err);
+      logger.error('Error loading announcements', err);
     }
   }, []);
 
   const loadAll = useCallback(async () => {
     try {
-      const [l, t, c, e, u, lb, pf, pcf, pef, pfp] = await Promise.all([
+      logger.info('Loading all admin data...');
+      
+      // FIXED: Proper user loading from profiles table
+      let userResponse = await apiFetch('GET', 'profiles?select=id,username,email,role,is_blocked,created_at,phone,phone_number,league_id&order=created_at.desc');
+      if (!userResponse || !Array.isArray(userResponse.data) || userResponse.data.length === 0) {
+        userResponse = await apiFetch('GET', 'users?select=id,username,email,role,is_blocked,created_at,phone,phone_number,league_id&order=created_at.desc');
+      }
+      const userData = Array.isArray(userResponse.data) ? userResponse.data : [];
+
+      const [l, t, c, e, lb, pf, pcf, pef, pfp] = await Promise.all([
         apiFetch('GET', 'leagues?select=*&order=country'),
         apiFetch('GET', 'teams?select=*&order=total_points.desc'),
         apiFetch('GET', 'cups?select=*'),
         apiFetch('GET', 'european_competitions?select=*'),
-        apiFetch('GET', 'users?select=id,username,email,role,is_blocked,created_at,phone,phone_number,league_id&order=created_at.desc'),
         apiFetch('GET', 'free_play_leaderboard?select=*&order=points.desc'),
         apiFetch('GET', 'fixtures?status=eq.pending_review&select=*,home:home_team_id(name),away:away_team_id(name),leagues(name)&order=created_at'),
         apiFetch('GET', 'cup_fixtures?status=eq.pending_review&select=*,home:home_team_id(name),away:away_team_id(name),cups(name)&order=created_at'),
@@ -121,7 +150,7 @@ export default function AdminPage({ user, profile }) {
       setTeams(Array.isArray(t.data) ? t.data : []);
       setCups(Array.isArray(c.data) ? c.data : []);
       setEuroComps(Array.isArray(e.data) ? e.data : []);
-      setUsers(Array.isArray(u.data) ? u.data : []);
+      setUsers(userData);
 
       const lbData = Array.isArray(lb.data) ? lb.data : [];
       const seen = new Set();
@@ -155,8 +184,15 @@ export default function AdminPage({ user, profile }) {
         })),
       ];
       setPending(allPending);
+      
+      logger.success('All data loaded', {
+        leagues: l.data?.length || 0,
+        teams: t.data?.length || 0,
+        users: userData.length,
+        pending: allPending.length
+      });
     } catch (error) {
-      console.error('loadAll error:', error);
+      logger.error('loadAll error', error);
       showMsg('Error loading admin data: ' + error.message, 'danger');
     }
   }, []);
@@ -168,6 +204,9 @@ export default function AdminPage({ user, profile }) {
     }
   }, [profile, loadAll, loadAnnouncements]);
 
+  // ========== CALCULATE REAL LEAGUE CAPACITY ==========
+  const totalLeagueSlotsCapacity = leagues.reduce((acc, curr) => acc + (parseInt(curr.slots) || 0), 0);
+
   async function loadPointsHistory() {
     const r = await apiFetch('GET',
       'player_points_history?select=*,admin:admin_id(username),player:player_id(username)&order=created_at.desc&limit=100'
@@ -175,9 +214,9 @@ export default function AdminPage({ user, profile }) {
     setPointsHistory(Array.isArray(r.data) ? r.data : []);
   }
 
-  // Announcement Functions
+  // ========== ANNOUNCEMENT FUNCTIONS ==========
   async function saveAnnouncement() {
-    if (!annMessage.trim()) { showMsg('Announcement details cannot be empty', 'danger'); return; }
+    if (!annMessage.trim()) { showMsg('Announcement text is required', 'danger'); return; }
     
     if (editingAnnId) {
       const r = await rFetch('PATCH', `announcements?id=eq.${editingAnnId}`, { message: annMessage });
@@ -197,6 +236,7 @@ export default function AdminPage({ user, profile }) {
         setAnnMessage('');
         loadAnnouncements();
         logAction('create_announcement');
+        logger.success('New announcement created', { message: annMessage });
       } else {
         showMsg('Failed to post announcement', 'danger');
       }
@@ -224,7 +264,6 @@ export default function AdminPage({ user, profile }) {
     const targetLeague = leagueId === '' ? null : leagueId;
     
     let r = await rFetch('PATCH', `profiles?id=eq.${uid}`, { league_id: targetLeague }, { Prefer: 'return=minimal' });
-    
     if (!r.ok) {
       r = await rFetch('PATCH', `users?id=eq.${uid}`, { league_id: targetLeague }, { Prefer: 'return=minimal' });
     }
@@ -234,7 +273,7 @@ export default function AdminPage({ user, profile }) {
       loadAll();
       logAction('assign_user_league', { uid, leagueId: targetLeague });
     } else {
-      showMsg('Failed to assign league. Make sure league_id column exists on your profiles/users table.', 'danger');
+      showMsg('Failed to assign league. Make sure league_id column exists.', 'danger');
     }
   }
 
@@ -517,7 +556,7 @@ export default function AdminPage({ user, profile }) {
             <div>
               <div className="grid-4" style={{ marginBottom: '1.5rem' }}>
                 {[
-                  ['Players', users.length, '👤'],
+                  ['Players', `${users.length} / ${totalLeagueSlotsCapacity}`, '👤'],
                   ['Leagues', leagues.length, '🏟️'],
                   ['Teams', teams.length, '👕'],
                   ['Pending', pending.length, '⚠️']
@@ -556,7 +595,9 @@ export default function AdminPage({ user, profile }) {
 
                 <div style={{ fontWeight: 600, fontSize: '0.9rem', marginBottom: '0.5rem' }}>Active Live Announcements ({announcements.length})</div>
                 {announcements.length === 0 ? (
-                  <div style={{ fontSize: '0.85rem', color: 'var(--muted)', fontStyle: 'italic' }}>No announcements published yet.</div>
+                  <div style={{ fontSize: '0.85rem', color: 'var(--muted)', fontStyle: 'italic' }}>
+                    No announcements published yet.
+                  </div>
                 ) : (
                   <div className="table-wrap">
                     <table>
@@ -756,13 +797,7 @@ export default function AdminPage({ user, profile }) {
                     <table>
                       <thead>
                         <tr>
-                          <th>Player</th>
-                          <th>Change</th>
-                          <th>Before</th>
-                          <th>After</th>
-                          <th>Reason</th>
-                          <th>Admin</th>
-                          <th>Date</th>
+                          {['Player', 'Change', 'Before', 'After', 'Reason', 'Admin', 'Date'].map(h => <th key={h}>{h}</th>)}
                         </tr>
                       </thead>
                       <tbody>
@@ -783,13 +818,178 @@ export default function AdminPage({ user, profile }) {
                         ))}
                       </tbody>
                     </table>
-                  </div>
-                }
+                  </div>}
               </div>
             </div>
           )}
 
-          {/* USERS MANAGEMENT SECTION */}
+          {/* LEAGUES - FIXED: Full functionality */}
+          {section === 'leagues' && (
+            <div className="card">
+              <div style={{ fontWeight: 700, marginBottom: '1rem', fontSize: '1.1rem' }}>🏟️ League Management</div>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.5rem', marginBottom: '1rem' }}>
+                <input className="form-input" placeholder="League Name" value={nlName} onChange={e => setNlName(e.target.value)} />
+                <input className="form-input" placeholder="Country" value={nlCountry} onChange={e => setNlCountry(e.target.value)} />
+                <input className="form-input" type="number" placeholder="Tier" value={nlTier} onChange={e => setNlTier(parseInt(e.target.value) || 1)} />
+                <input className="form-input" type="number" placeholder="Slots" value={nlSlots} onChange={e => setNlSlots(parseInt(e.target.value) || 16)} />
+                <input className="form-input" placeholder="Season (e.g. 2024-25)" value={nlSeason} onChange={e => setNlSeason(e.target.value)} />
+              </div>
+              <button className="btn btn-primary" onClick={createNewLeague} style={{ marginBottom: '1rem' }}>➕ Create League</button>
+
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Country</th>
+                      <th>Tier</th>
+                      <th>Slots</th>
+                      <th>Season</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {leagues.length === 0 ? (
+                      <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--muted)', padding: '2rem' }}>No leagues configured</td></tr>
+                    ) : (
+                      leagues.map(l => (
+                        <tr key={l.id}>
+                          <td style={{ fontWeight: 600 }}>{l.name}</td>
+                          <td>{l.country}</td>
+                          <td>{l.tier}</td>
+                          <td style={{ color: 'var(--blue)', fontWeight: 'bold' }}>{l.slots || 16}</td>
+                          <td>{l.season || '—'}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* FIXTURES - FIXED: Full functionality */}
+          {section === 'fixtures' && (
+            <div className="card">
+              <div style={{ fontWeight: 700, marginBottom: '1rem', fontSize: '1.1rem' }}>📅 Fixtures Generator</div>
+              <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+                <select className="form-select" value={genLeague} onChange={e => setGenLeague(e.target.value)} style={{ minWidth: '200px' }}>
+                  <option value="">-- Select League --</option>
+                  {leagues.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                </select>
+                <button className="btn btn-primary" onClick={generateFixtures}>⚡ Generate Round Robin</button>
+              </div>
+              <div className="alert alert-info">Select a league and click generate to create fixtures for all teams</div>
+            </div>
+          )}
+
+          {/* CUPS */}
+          {section === 'cups' && (
+            <div className="card">
+              <div style={{ fontWeight: 700, marginBottom: '1rem', fontSize: '1.1rem' }}>🏆 Cup Management</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.5rem', marginBottom: '1rem' }}>
+                <input className="form-input" placeholder="Cup Name" value={ncName} onChange={e => setNcName(e.target.value)} />
+                <select className="form-select" value={ncLeague} onChange={e => setNcLeague(e.target.value)}>
+                  <option value="">-- Select League --</option>
+                  {leagues.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                </select>
+              </div>
+              <button className="btn btn-primary" onClick={() => cupDraw(ncLeague)} style={{ marginBottom: '1rem' }}>🎲 Draw Cup</button>
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>League</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cups.length === 0 ? (
+                      <tr><td colSpan={3} style={{ textAlign: 'center', color: 'var(--muted)', padding: '2rem' }}>No cups created</td></tr>
+                    ) : (
+                      cups.map(c => (
+                        <tr key={c.id}>
+                          <td>{c.name}</td>
+                          <td>{leagues.find(l => l.id === c.league_id)?.name || '—'}</td>
+                          <td><span className="badge badge-gray">Active</span></td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* EUROPEAN */}
+          {section === 'european' && (
+            <div className="card">
+              <div style={{ fontWeight: 700, marginBottom: '1rem', fontSize: '1.1rem' }}>🇪🇺 European Competitions</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.5rem', marginBottom: '1rem' }}>
+                <input className="form-input" placeholder="Competition Name" value={neName} onChange={e => setNeName(e.target.value)} />
+                <input className="form-input" placeholder="Season" value={neSeason} onChange={e => setNeSeason(e.target.value)} />
+              </div>
+              <button className="btn btn-primary" style={{ marginBottom: '1rem' }}>➕ Create Competition</button>
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Season</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {euroComps.length === 0 ? (
+                      <tr><td colSpan={3} style={{ textAlign: 'center', color: 'var(--muted)', padding: '2rem' }}>No European competitions</td></tr>
+                    ) : (
+                      euroComps.map(e => (
+                        <tr key={e.id}>
+                          <td>{e.name}</td>
+                          <td>{e.season}</td>
+                          <td><span className="badge badge-gray">Active</span></td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* TEAM POINTS */}
+          {section === 'points' && (
+            <div className="card">
+              <div style={{ fontWeight: 700, marginBottom: '1rem', fontSize: '1.1rem' }}>✏️ Adjust Team Points</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.5rem', marginBottom: '1rem' }}>
+                <select className="form-select" value={adjTeam} onChange={e => setAdjTeam(e.target.value)}>
+                  <option value="">-- Select Team --</option>
+                  {teams.map(t => <option key={t.id} value={t.id}>{t.name} ({t.total_points || 0} pts)</option>)}
+                </select>
+                <input className="form-input" type="number" placeholder="Points Change" value={adjPts} onChange={e => setAdjPts(parseInt(e.target.value) || 0)} />
+                <input className="form-input" placeholder="Reason" value={adjReason} onChange={e => setAdjReason(e.target.value)} />
+              </div>
+              <button className="btn btn-primary" onClick={adjustTeamPoints}>✏️ Apply Points Adjustment</button>
+            </div>
+          )}
+
+          {/* RELEGATION */}
+          {section === 'relegation' && (
+            <div className="card">
+              <div style={{ fontWeight: 700, marginBottom: '1rem', fontSize: '1.1rem' }}>📊 Relegation / Promotion</div>
+              <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+                <select className="form-select" value={genLeague} onChange={e => setGenLeague(e.target.value)} style={{ minWidth: '200px' }}>
+                  <option value="">-- Select League --</option>
+                  {leagues.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                </select>
+                <button className="btn btn-danger" onClick={processRelegation}>⚡ Process Relegation</button>
+              </div>
+              <div className="alert alert-warning">⚠️ This action cannot be undone. Make sure the season is complete.</div>
+            </div>
+          )}
+
+          {/* USERS */}
           {section === 'users' && (
             <div className="card">
               <div style={{ fontWeight: 700, marginBottom: '1rem', fontSize: '1.1rem' }}>👥 System Users Management</div>
@@ -806,16 +1006,16 @@ export default function AdminPage({ user, profile }) {
                     <tr>
                       <th>Username</th>
                       <th>Email</th>
-                      <th>Phone Number</th>
-                      <th>Role Management</th>
-                      <th>Assigned League</th>
+                      <th>Phone</th>
+                      <th>Role</th>
+                      <th>League</th>
                       <th>Status</th>
                       <th>Action</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredUsers.length === 0 ? (
-                      <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--muted)', padding: '2rem' }}>No users matched parameters</td></tr>
+                      <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--muted)', padding: '2rem' }}>No users found</td></tr>
                     ) : (
                       filteredUsers.map(u => (
                         <tr key={u.id}>
@@ -842,7 +1042,7 @@ export default function AdminPage({ user, profile }) {
                             >
                               <option value="">-- No League --</option>
                               {leagues.map(lg => (
-                                <option key={lg.id} value={lg.id}>{lg.name} ({lg.country})</option>
+                                <option key={lg.id} value={lg.id}>{lg.name}</option>
                               ))}
                             </select>
                           </td>
@@ -868,60 +1068,38 @@ export default function AdminPage({ user, profile }) {
             </div>
           )}
 
-          {/* FALLBACK PLACEHOLDERS FOR REMAINING SECTIONS */}
-          {['leagues', 'fixtures', 'cups', 'european', 'points', 'relegation', 'logs'].includes(section) && (
+          {/* LOGS */}
+          {section === 'logs' && (
             <div className="card">
-              <div style={{ fontWeight: 700, marginBottom: '1rem', textTransform: 'uppercase' }}>🏟️ {section} Console</div>
-              <div className="alert alert-info">Manage dataset configurations via action menus.</div>
-              {section === 'relegation' && (
-                <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <select className="form-select" value={genLeague} onChange={e => setGenLeague(e.target.value)} style={{ maxWidth: 300 }}>
-                    <option value="">-- Select Target League --</option>
-                    {leagues.map(l => <option key={l.id} value={l.id}>{l.name} ({l.country})</option>)}
-                  </select>
-                  <button className="btn btn-danger" onClick={processRelegation}>Execute Season Relegation Engine</button>
-                </div>
-              )}
-              {section === 'fixtures' && (
-                <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <select className="form-select" value={genLeague} onChange={e => setGenLeague(e.target.value)} style={{ maxWidth: 300 }}>
-                    <option value="">-- Select Target League --</option>
-                    {leagues.map(l => <option key={l.id} value={l.id}>{l.name} ({l.country})</option>)}
-                  </select>
-                  <button className="btn btn-primary" onClick={generateFixtures}>⚡ Auto-Generate League Round Robin</button>
-                </div>
-              )}
-              {section === 'logs' && (
-                <div className="table-wrap" style={{ marginTop: '1rem' }}>
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Admin</th>
-                        <th>Action</th>
-                        <th>Details</th>
-                        <th>Timestamp</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {logs.length === 0 ? 
-                        <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--muted)' }}>No audit trails fetched</td></tr> :
-                        logs.map(log => (
-                          <tr key={log.id}>
-                            <td>{log.admin?.username || log.admin_id || '—'}</td>
-                            <td><code style={{ fontSize: '0.8rem' }}>{log.action}</code></td>
-                            <td>
-                              <pre style={{ fontSize: '0.75rem', margin: 0, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {typeof log.details === 'object' ? JSON.stringify(log.details) : log.details || '—'}
-                              </pre>
-                            </td>
-                            <td style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>{new Date(log.created_at).toLocaleString()}</td>
-                          </tr>
-                        ))
-                      }
-                    </tbody>
-                  </table>
-                </div>
-              )}
+              <div style={{ fontWeight: 700, marginBottom: '1rem', fontSize: '1.1rem' }}>📋 Audit Logs</div>
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Admin</th>
+                      <th>Action</th>
+                      <th>Details</th>
+                      <th>Timestamp</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {logs.length === 0 ? (
+                      <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--muted)', padding: '2rem' }}>No logs available</td></tr>
+                    ) : (
+                      logs.map(log => (
+                        <tr key={log.id}>
+                          <td>{log.admin?.username || log.admin_id || '—'}</td>
+                          <td><code style={{ fontSize: '0.8rem' }}>{log.action}</code></td>
+                          <td style={{ fontSize: '0.75rem', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {typeof log.details === 'object' ? JSON.stringify(log.details) : log.details || '—'}
+                          </td>
+                          <td style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>{new Date(log.created_at).toLocaleString()}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>
