@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { sessionStore, SUPABASE_URL, SUPABASE_KEY } from '../services/supabase';
+import AnnouncementBanner from './AnnouncementBanner';
 
 export default function Navbar({ page, setPage }) {
   const { user, profile } = useAuth();
@@ -163,6 +164,10 @@ export default function Navbar({ page, setPage }) {
           </div>
         </div>
       </nav>
+
+      {/* ── ANNOUNCEMENT BANNER ───────────────────────────────────── */}
+      {/* Shows announcements to all users (including non-logged in) */}
+      <AnnouncementBanner />
 
       {/* ── NOTIFICATIONS PANEL ───────────────────────────────────── */}
       {showNotifs && (
