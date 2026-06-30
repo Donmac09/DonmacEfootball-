@@ -104,13 +104,12 @@ export default function AdminPage({ user, profile }) {
 
   const loadAll = useCallback(async () => {
     try {
-      // FIXED: Added phone_number and league_id to the user query selection string
-      const [l, t, c, e, u, lb, pf, pcf, pef, pfp] = await Promise.all([
+      // 1. Run all standard lookups in parallel
+      const [l, t, c, e, lb, pf, pcf, pef, pfp] = await Promise.all([
         apiFetch('GET', 'leagues?select=*&order=country'),
         apiFetch('GET', 'teams?select=*&order=total_points.desc'),
         apiFetch('GET', 'cups?select=*'),
         apiFetch('GET', 'european_competitions?select=*'),
-        apiFetch('GET', 'profiles?select=id,username,email,role,is_blocked,created_at,phone,phone_number,league_id&order=created_at.desc'),
         apiFetch('GET', 'free_play_leaderboard?select=*&order=points.desc'),
         apiFetch('GET', 'fixtures?status=eq.pending_review&select=*,home:home_team_id(name),away:away_team_id(name),leagues(name)&order=created_at'),
         apiFetch('GET', 'cup_fixtures?status=eq.pending_review&select=*,home:home_team_id(name),away:away_team_id(name),cups(name)&order=created_at'),
@@ -122,7 +121,17 @@ export default function AdminPage({ user, profile }) {
       setTeams(Array.isArray(t.data) ? t.data : []);
       setCups(Array.isArray(c.data) ? c.data : []);
       setEuroComps(Array.isArray(e.data) ? e.data : []);
-      setUsers(Array.isArray(u.data) ? u.data : []);
+
+      // 2. BULLETPROOF USER FETCH ENGINE
+      // Tries 'profiles' first. If missing or empty, gracefully switches to 'users'
+      let userResponse = await apiFetch('GET', 'profiles?select=id,username,email,role,is_blocked,created_at,phone,phone_number,league_id&order=created_at.desc');
+      
+      if (!userResponse || !Array.isArray(userResponse.data) || userResponse.data.length === 0) {
+        console.warn("Profiles table empty or inaccessible, attempting fallback to users table...");
+        userResponse = await apiFetch('GET', 'users?select=id,username,email,role,is_blocked,created_at,phone,phone_number,league_id&order=created_at.desc');
+      }
+
+      setUsers(userResponse && Array.isArray(userResponse.data) ? userResponse.data : []);
 
       const lbData = Array.isArray(lb.data) ? lb.data : [];
       const seen = new Set();
@@ -157,8 +166,8 @@ export default function AdminPage({ user, profile }) {
       ];
       setPending(allPending);
     } catch (error) {
-      console.error('loadAll error:', error);
-      showMsg('Error loading admin data: ' + error.message, 'danger');
+      console.error('loadAll execution failure:', error);
+      showMsg('Error loading admin dataset data: ' + error.message, 'danger');
     }
   }, []);
 
