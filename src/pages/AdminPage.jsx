@@ -1,6 +1,35 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { apiFetch, SUPABASE_URL, SUPABASE_KEY } from '../services/supabase';
 
+// Add this at the top of AdminPage.jsx (after imports)
+const logger = {
+  info: (message, data = null) => {
+    console.groupCollapsed(`ℹ️ [Admin] ${message}`);
+    if (data) console.log('📊', data);
+    console.groupEnd();
+  },
+  success: (message, data = null) => {
+    console.groupCollapsed(`✅ [Admin] ${message}`);
+    if (data) console.log('📊', data);
+    console.groupEnd();
+  },
+  error: (message, data = null) => {
+    console.groupCollapsed(`❌ [Admin] ${message}`);
+    if (data) console.log('📊', data);
+    if (data?.stack) console.log('📋 Stack:', data.stack);
+    console.groupEnd();
+  },
+  warn: (message, data = null) => {
+    console.groupCollapsed(`⚠️ [Admin] ${message}`);
+    if (data) console.log('📊', data);
+    console.groupEnd();
+  }
+};
+
+// Then replace all console.log/error with:
+// logger.info('Loading data', { count: 10 });
+// logger.error('Failed to load', error);
+
 const SECTIONS = [
   ['dashboard', '📊 Dashboard'],
   ['results', '⚠️ Results'],
@@ -73,35 +102,41 @@ export default function AdminPage({ user, profile }) {
   };
 
   async function rFetch(method, path, body, ex = {}) {
-    try {
-      const r = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+  try {
+    logger.info(`${method} ${path}`, { body: body ? JSON.stringify(body) : null });
+    
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+      method,
+      headers: {
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${SUPABASE_KEY}`,
+        'Content-Type': 'application/json',
+        ...ex,
+      },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+    
+    let d = null;
+    const text = await r.text();
+    try { d = JSON.parse(text); } catch { d = text; }
+    
+    if (!r.ok) {
+      logger.error(`API Error ${r.status} on ${path}`, {
+        status: r.status,
+        path,
         method,
-        headers: {
-          apikey: SUPABASE_KEY,
-          Authorization: `Bearer ${SUPABASE_KEY}`,
-          'Content-Type': 'application/json',
-          ...ex,
-        },
-        body: body !== undefined ? JSON.stringify(body) : undefined,
+        response: d
       });
-      let d = null;
-      const text = await r.text();
-      try { d = JSON.parse(text); } catch { d = text; }
-      if (!r.ok) {
-        // FIXED: Better error formatting
-        logWithStyle(`❌ API Error ${r.status} on ${path}`, {
-          status: r.status,
-          path: path,
-          method: method,
-          body: body,
-          response: d
-        }, 'error');
-      } else {
-        // FIXED: Success logging with style
-        logWithStyle(`✅ ${method} ${path} successful`, { status: r.status }, 'success');
-      }
-      return { ok: r.ok, status: r.status, data: d };
-    } catch (error) {
+    } else {
+      logger.success(`${method} ${path}`, { status: r.status });
+    }
+    
+    return { ok: r.ok, status: r.status, data: d };
+  } catch (error) {
+    logger.error(`Exception in rFetch`, { error, path, method });
+    return { ok: false, status: 500, data: null, error: error.message };
+  }
+}
       // FIXED: Exception logging with stack trace
       logWithStyle(`💥 Exception in rFetch`, {
         error: error.message,
