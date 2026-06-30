@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { sb, sessionStore } from '../services/supabase';
-import { getProfile, signOut as authSignOut } from '../services/auth';
+import { getProfile, signOut as authSignOut, signIn, signUp } from '../services/auth';
 
 const AuthContext = createContext(null);
 
@@ -39,7 +39,6 @@ export function AuthProvider({ children }) {
         setUser(session.user);
         const prof = await getProfile(session.user.id);
         setProfile(prof);
-        console.log('Session profile:', prof);
       }
       setLoading(false);
     }).catch(() => { clearTimeout(timeout); setLoading(false); });
@@ -50,7 +49,6 @@ export function AuthProvider({ children }) {
         setUser(session.user);
         const prof = await getProfile(session.user.id);
         setProfile(prof);
-        console.log('Auth state change profile:', prof);
       } else {
         sessionStore.session = null;
         setUser(null);
@@ -60,6 +58,34 @@ export function AuthProvider({ children }) {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  async function handleSignIn(email, password) {
+    try {
+      const data = await signIn(email, password);
+      if (data?.user) {
+        setUser(data.user);
+        const prof = await getProfile(data.user.id);
+        setProfile(prof);
+      }
+      return data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  async function handleSignUp(email, password, username, whatsapp) {
+    try {
+      const data = await signUp(email, password, username, whatsapp);
+      if (data?.user) {
+        setUser(data.user);
+        const prof = await getProfile(data.user.id);
+        setProfile(prof);
+      }
+      return data;
+    } catch (error) {
+      throw error;
+    }
+  }
 
   async function handleSignOut() {
     await authSignOut();
@@ -72,6 +98,8 @@ export function AuthProvider({ children }) {
       user,
       profile,
       loading,
+      handleSignIn,
+      handleSignUp,
       handleSignOut,
       refreshProfile
     }}>
