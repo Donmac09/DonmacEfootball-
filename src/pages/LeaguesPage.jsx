@@ -21,7 +21,10 @@ export default function LeaguesPage() {
   useEffect(() => {
     if (!selected) return;
     apiFetch('GET',`teams?league_id=eq.${selected.id}&select=*&order=total_points.desc`).then(r => setStandings(Array.isArray(r.data) ? r.data : []));
-    apiFetch('GET',`fixtures?league_id=eq.${selected.id}&select=*,home:home_team_id(name),away:away_team_id(name)&order=round`).then(r => setFixtures(Array.isArray(r.data) ? r.data : []));
+    apiFetch('GET',`fixtures?league_id=eq.${selected.id}&select=*,home:home_team_id(name),away:away_team_id(name)&order=round`).then(r => {
+      console.log('📅 Fixtures loaded:', r.data);
+      setFixtures(Array.isArray(r.data) ? r.data : []);
+    });
   }, [selected]);
 
   function zoneClass(i, total) {
@@ -31,6 +34,12 @@ export default function LeaguesPage() {
     if (i < 6) return 'zone-conf';
     if (i >= rel) return 'zone-rel';
     return '';
+  }
+
+  function formatDate(dateString) {
+    if (!dateString) return null;
+    const date = new Date(dateString);
+    return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
   }
 
   const tier1 = leagues.filter(l => l.tier === 1);
@@ -48,7 +57,6 @@ export default function LeaguesPage() {
             {tier1.length > 0 && <>
               <div style={{ fontSize: '.72rem', color: 'var(--muted)', padding: '4px 8px', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 4 }}>Division 1</div>
               {tier1.map(l => {
-                // Count teams in this league
                 const teamCount = standings.filter(t => t.league_id === l.id).length;
                 const maxSlots = l.max_slots || 16;
                 return (
@@ -101,11 +109,11 @@ export default function LeaguesPage() {
         <div style={{ flex: 1, minWidth: 0 }}>
           {selected ? <>
             <div className="card" style={{ marginBottom: '1rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                 <h3 style={{ fontWeight: 700, fontSize: '1.1rem' }}>
                   {selected.country} {selected.name}
                 </h3>
-                <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <span className="badge badge-yellow">Season {selected.current_season || selected.season || '2024-25'}</span>
                   <span className="badge badge-gray">Tier {selected.tier}</span>
                   <span className="badge badge-blue">
@@ -121,7 +129,6 @@ export default function LeaguesPage() {
 
             {tab === 'standings' && (
               <div className="card">
-                {/* Zone legend */}
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.5rem', marginBottom: '.75rem' }}>
                   {[['#1d4ed8','Champions League'],['#ea580c','Europa League'],['#7c3aed','Conference'],['var(--red)','Relegation']].map(([c,l]) => (
                     <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '.72rem', color: 'var(--muted)' }}>
@@ -152,21 +159,43 @@ export default function LeaguesPage() {
 
             {tab === 'fixtures' && (
               <div>
-                {fixtures.length === 0
-                  ? <div className="card empty-state"><div className="empty-icon">📅</div>No fixtures generated yet</div>
-                  : [...new Set(fixtures.map(f=>f.round))].map(round => (
+                {fixtures.length === 0 ? (
+                  <div className="card empty-state"><div className="empty-icon">📅</div>No fixtures generated yet</div>
+                ) : (
+                  [...new Set(fixtures.map(f => f.round))].map(round => {
+                    const roundFixtures = fixtures.filter(f => f.round === round);
+                    const firstDate = roundFixtures[0]?.scheduled_date;
+                    
+                    return (
                       <div key={round} className="card" style={{ marginBottom: '.75rem' }}>
-                        <div style={{ fontWeight: 600, fontSize: '.85rem', color: 'var(--muted)', marginBottom: '.75rem' }}>Round {round}</div>
-                        {fixtures.filter(f=>f.round===round).map(f => (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '.75rem', flexWrap: 'wrap', gap: '8px' }}>
+                          <div style={{ fontWeight: 600, fontSize: '.85rem', color: 'var(--muted)' }}>
+                            Round {round}
+                            {firstDate && (
+                              <span style={{ marginLeft: '12px', fontSize: '.75rem', color: 'var(--blue)' }}>
+                                📅 {formatDate(firstDate)}
+                              </span>
+                            )}
+                          </div>
+                          <span className="badge badge-gray">{roundFixtures.length} matches</span>
+                        </div>
+                        
+                        {roundFixtures.map(f => (
                           <div key={f.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                            <div style={{ flex: 1, textAlign: 'right', fontWeight: 600, fontSize: '.875rem' }}>{f.home?.name||'TBD'}</div>
-                            <div style={{ padding: '0 16px', fontWeight: 700, color: f.status==='approved'?'var(--yellow)':'var(--muted)' }}>{f.status==='approved'?`${f.home_score} – ${f.away_score}`:'vs'}</div>
-                            <div style={{ flex: 1, fontSize: '.875rem' }}>{f.away?.name||'TBD'}</div>
-                            <span className={`badge ${f.status==='approved'?'badge-green':f.status==='pending_review'?'badge-warn':'badge-gray'}`}>{f.status==='approved'?'Final':f.status==='pending_review'?'Review':'Sched.'}</span>
+                            <div style={{ flex: 1, textAlign: 'right', fontWeight: 600, fontSize: '.875rem' }}>{f.home?.name || 'TBD'}</div>
+                            <div style={{ padding: '0 16px', fontWeight: 700, color: f.status === 'approved' ? 'var(--yellow)' : 'var(--muted)' }}>
+                              {f.status === 'approved' ? `${f.home_score} – ${f.away_score}` : 'vs'}
+                            </div>
+                            <div style={{ flex: 1, fontSize: '.875rem' }}>{f.away?.name || 'TBD'}</div>
+                            <span className={`badge ${f.status === 'approved' ? 'badge-green' : f.status === 'pending_review' ? 'badge-warn' : 'badge-gray'}`}>
+                              {f.status === 'approved' ? 'Final' : f.status === 'pending_review' ? 'Review' : 'Sched.'}
+                            </span>
                           </div>
                         ))}
                       </div>
-                    ))}
+                    );
+                  })
+                )}
               </div>
             )}
           </> : <div className="card empty-state"><div className="empty-icon">🏟️</div>Select a league</div>}
