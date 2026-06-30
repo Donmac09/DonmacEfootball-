@@ -110,12 +110,15 @@ export default function AdminPage({ user, profile }) {
       setTeams(Array.isArray(t.data) ? t.data : []);
 
       // Absolute complete user list tracking (Fallback engine built-in)
-      let userResponse = await apiFetch('GET', 'profiles?select=id,username,email,role,is_blocked,created_at,phone,phone_number,league_id&order=created_at.desc');
-      if (!userResponse || !Array.isArray(userResponse.data) || userResponse.data.length === 0) {
-        userResponse = await apiFetch('GET', 'users?select=id,username,email,role,is_blocked,created_at,phone,phone_number,league_id&order=created_at.desc');
-      }
-      setUsers(userResponse && Array.isArray(userResponse.data) ? userResponse.data : []);
+      // Replace just your user fetch line inside loadAll with this:
+let userResponse = await apiFetch('GET', 'profiles?select=id,username,email,role,is_blocked,created_at,phone,phone_number,league_id&order=created_at.desc');
 
+if (!userResponse || !Array.isArray(userResponse.data) || userResponse.data.length === 0) {
+  console.warn("Profiles empty, falling back to core auth roster...");
+  userResponse = await apiFetch('GET', 'users?select=id,username,email,role,is_blocked,created_at,phone,phone_number,league_id&order=created_at.desc');
+}
+
+setUsers(userResponse && Array.isArray(userResponse.data) ? userResponse.data : []);
       const lbData = Array.isArray(lb.data) ? lb.data : [];
       const seen = new Set();
       const dedupedLb = lbData.filter(item => {
