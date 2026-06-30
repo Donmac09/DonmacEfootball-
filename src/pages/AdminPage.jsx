@@ -153,27 +153,16 @@ setUsers(userResponse && Array.isArray(userResponse.data) ? userResponse.data : 
   }
 
   async function saveAnnouncement() {
-    if (!annMessage.trim()) { showMsg('Announcement text is required', 'danger'); return; }
-    
-    if (editingAnnId) {
-      const r = await rFetch('PATCH', `announcements?id=eq.${editingAnnId}`, { message: annMessage });
-      if (r.ok) {
-        showMsg('📢 Announcement updated successfully!');
-        setEditingAnnId(null);
-        setAnnMessage('');
-        await loadAnnouncements();
-      }
-    } else {
-      const r = await rFetch('POST', 'announcements', { message: annMessage, created_by: user?.id });
-      if (r.ok) {
-        showMsg('📢 Broadcast posted successfully!');
-        setAnnMessage('');
-        await loadAnnouncements();
-      } else {
-        showMsg('Could not publish broadcast data table rules.', 'danger');
-      }
-    }
+  if (!annMessage.trim()) return;
+  
+  const r = await rFetch('POST', 'announcements', { message: annMessage, created_by: user?.id });
+  if (r.ok) {
+    setAnnMessage('');
+    // Put your specific announcement loading function here to force a UI refresh:
+    await loadAnnouncements(); 
+    showMsg('📢 Announcement broadcasted!');
   }
+}
 
   async function deleteAnnouncement(id) {
     if (!window.confirm('Delete this announcement?')) return;
@@ -316,7 +305,7 @@ setUsers(userResponse && Array.isArray(userResponse.data) ? userResponse.data : 
                   <div style={{ fontSize: '0.85rem', color: '#aaa' }}>Roster Attendance</div>
                   {/* REAL CAPACITY CALCULATION APPLIED HERE */}
                   <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: '#00ffcc' }}>
-                    {users.length} / {totalLeagueSlotsCapacity} Registered
+                    {users.length} / {totalLeagueSlotsCapacity} Registered players
                   </div>
                   <div style={{ fontSize: '0.75rem', color: '#666', marginTop: '4px' }}>Based on total combined league limits</div>
                 </div>
