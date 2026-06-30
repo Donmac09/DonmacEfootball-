@@ -55,6 +55,23 @@ export default function AdminPage({ user, profile }) {
   const [ppReason, setPpReason] = useState('');
   const [ppSearch, setPpSearch] = useState('');
 
+  // ========== FIXED: Better console logging with clear formatting ==========
+  const logWithStyle = (message, data = null, type = 'info') => {
+    const styles = {
+      info: 'color: #3b82f6; font-weight: bold;',
+      success: 'color: #22c55e; font-weight: bold;',
+      warning: 'color: #eab308; font-weight: bold;',
+      error: 'color: #ef4444; font-weight: bold;'
+    };
+    
+    const prefix = `[Admin]`;
+    console.groupCollapsed(`${prefix} ${message}`);
+    if (data) {
+      console.log(`%c📊 Data:`, 'color: #6b7280;', data);
+    }
+    console.groupEnd();
+  };
+
   async function rFetch(method, path, body, ex = {}) {
     try {
       const r = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
@@ -71,11 +88,27 @@ export default function AdminPage({ user, profile }) {
       const text = await r.text();
       try { d = JSON.parse(text); } catch { d = text; }
       if (!r.ok) {
-        console.error(`rFetch error ${r.status} on ${path}:`, d);
+        // FIXED: Better error formatting
+        logWithStyle(`❌ API Error ${r.status} on ${path}`, {
+          status: r.status,
+          path: path,
+          method: method,
+          body: body,
+          response: d
+        }, 'error');
+      } else {
+        // FIXED: Success logging with style
+        logWithStyle(`✅ ${method} ${path} successful`, { status: r.status }, 'success');
       }
       return { ok: r.ok, status: r.status, data: d };
     } catch (error) {
-      console.error('rFetch exception:', error);
+      // FIXED: Exception logging with stack trace
+      logWithStyle(`💥 Exception in rFetch`, {
+        error: error.message,
+        stack: error.stack,
+        path: path,
+        method: method
+      }, 'error');
       return { ok: false, status: 500, data: null, error: error.message };
     }
   }
@@ -97,14 +130,16 @@ export default function AdminPage({ user, profile }) {
     try {
       const r = await apiFetch('GET', 'announcements?select=*&order=created_at.desc');
       setAnnouncements(Array.isArray(r.data) ? r.data : []);
+      logWithStyle('📢 Announcements loaded', { count: r.data?.length || 0 }, 'info');
     } catch (err) {
-      console.error('Error loading announcements:', err);
+      logWithStyle('Error loading announcements', err, 'error');
     }
   }, []);
 
   const loadAll = useCallback(async () => {
     try {
-      // FIXED: Added phone_number and league_id to the user query selection string
+      logWithStyle('🔄 Loading all admin data...', null, 'info');
+      
       const [l, t, c, e, u, lb, pf, pcf, pef, pfp] = await Promise.all([
         apiFetch('GET', 'leagues?select=*&order=country'),
         apiFetch('GET', 'teams?select=*&order=total_points.desc'),
@@ -156,8 +191,16 @@ export default function AdminPage({ user, profile }) {
         })),
       ];
       setPending(allPending);
+      
+      logWithStyle('✅ All data loaded successfully', {
+        leagues: l.data?.length || 0,
+        teams: t.data?.length || 0,
+        users: u.data?.length || 0,
+        pending: allPending.length
+      }, 'success');
+      
     } catch (error) {
-      console.error('loadAll error:', error);
+      logWithStyle('❌ loadAll error', error, 'error');
       showMsg('Error loading admin data: ' + error.message, 'danger');
     }
   }, []);
@@ -176,9 +219,12 @@ export default function AdminPage({ user, profile }) {
     setPointsHistory(Array.isArray(r.data) ? r.data : []);
   }
 
-  // Announcement Functions
+  // ========== FIXED: Announcement Functions with better error handling ==========
   async function saveAnnouncement() {
-    if (!annMessage.trim()) { showMsg('Announcement details cannot be empty', 'danger'); return; }
+    if (!annMessage.trim()) { 
+      showMsg('Announcement details cannot be empty', 'danger'); 
+      return; 
+    }
     
     if (editingAnnId) {
       const r = await rFetch('PATCH', `announcements?id=eq.${editingAnnId}`, { message: annMessage });
@@ -188,8 +234,10 @@ export default function AdminPage({ user, profile }) {
         setAnnMessage('');
         loadAnnouncements();
         logAction('edit_announcement', { id: editingAnnId });
+        logWithStyle('📝 Announcement edited', { id: editingAnnId, message: annMessage }, 'info');
       } else {
         showMsg('Failed to update announcement', 'danger');
+        logWithStyle('❌ Failed to update announcement', { error: r.data }, 'error');
       }
     } else {
       const r = await rFetch('POST', 'announcements', { message: annMessage, created_by: user.id });
@@ -198,8 +246,10 @@ export default function AdminPage({ user, profile }) {
         setAnnMessage('');
         loadAnnouncements();
         logAction('create_announcement');
+        logWithStyle('📢 New announcement created', { message: annMessage }, 'success');
       } else {
         showMsg('Failed to post announcement', 'danger');
+        logWithStyle('❌ Failed to create announcement', { error: r.data }, 'error');
       }
     }
   }
@@ -211,24 +261,24 @@ export default function AdminPage({ user, profile }) {
       showMsg('❌ Announcement deleted');
       loadAnnouncements();
       logAction('delete_announcement', { id });
+      logWithStyle('🗑️ Announcement deleted', { id }, 'warning');
     } else {
       showMsg('Failed to delete announcement', 'danger');
+      logWithStyle('❌ Failed to delete announcement', { error: r.data }, 'error');
     }
   }
 
   function handleEditAnnouncement(ann) {
     setEditingAnnId(ann.id);
     setAnnMessage(ann.message);
+    logWithStyle('✏️ Editing announcement', { id: ann.id, message: ann.message }, 'info');
   }
 
-  // FIXED: League Assign Function to cleanly alter target database record mappings
   async function assignLeagueToUser(uid, leagueId) {
     const targetLeague = leagueId === '' ? null : leagueId;
     
-    // First attempt update on profiles mapping table
     let r = await rFetch('PATCH', `profiles?id=eq.${uid}`, { league_id: targetLeague }, { Prefer: 'return=minimal' });
     
-    // Fallback alignment check for custom user entities
     if (!r.ok) {
       r = await rFetch('PATCH', `users?id=eq.${uid}`, { league_id: targetLeague }, { Prefer: 'return=minimal' });
     }
@@ -237,8 +287,10 @@ export default function AdminPage({ user, profile }) {
       showMsg('🏟️ User league mapping updated successfully!');
       loadAll();
       logAction('assign_user_league', { uid, leagueId: targetLeague });
+      logWithStyle('🏟️ League assigned to user', { uid, leagueId: targetLeague }, 'success');
     } else {
       showMsg('Failed to assign league. Make sure league_id column exists on your profiles/users table.', 'danger');
+      logWithStyle('❌ Failed to assign league', { uid, leagueId: targetLeague, error: r.data }, 'error');
     }
   }
 
@@ -534,7 +586,7 @@ export default function AdminPage({ user, profile }) {
                 ))}
               </div>
 
-              {/* NEW ADDITION: Announcement Dashboard Controls */}
+              {/* Announcement Dashboard Controls */}
               <div className="card" style={{ marginBottom: '1.5rem' }}>
                 <div style={{ fontWeight: 700, marginBottom: '1rem', color: 'var(--blue)' }}>📢 System Announcements Board</div>
                 <div className="form-group" style={{ marginBottom: '1rem' }}>
@@ -560,7 +612,9 @@ export default function AdminPage({ user, profile }) {
 
                 <div style={{ fontWeight: 600, fontSize: '0.9rem', marginBottom: '0.5rem' }}>Active Live Announcements ({announcements.length})</div>
                 {announcements.length === 0 ? (
-                  <div style={{ fontSize: '0.85rem', color: 'var(--muted)', italic: 'true' }}>No announcements published yet.</div>
+                  <div style={{ fontSize: '0.85rem', color: 'var(--muted)', fontStyle: 'italic' }}>
+                    No announcements published yet.
+                  </div>
                 ) : (
                   <div className="table-wrap">
                     <table>
@@ -759,16 +813,24 @@ export default function AdminPage({ user, profile }) {
                   <div className="table-wrap">
                     <table>
                       <thead>
-                        <tr>{['Player', 'Change', 'Before', 'After', 'Reason'].map(h => <th key={h}>{h}</th>)}</tr>
+                        <tr>
+                          {['Player', 'Change', 'Before', 'After', 'Reason', 'Admin', 'Date'].map(h => <th key={h}>{h}</th>)}
+                        </tr>
                       </thead>
                       <tbody>
                         {pointsHistory.map(h => (
                           <tr key={h.id}>
                             <td style={{ fontWeight: 600 }}>{h.player?.username || '—'}</td>
-                            <td style={{ fontWeight: 700, color: h.change > 0 ? 'var(--green)' : 'var(--red)' }}>{h.change > 0 ? '+' : ''}{h.change}</td>
+                            <td style={{ fontWeight: 700, color: h.change > 0 ? 'var(--green)' : 'var(--red)' }}>
+                              {h.change > 0 ? '+' : ''}{h.change}
+                            </td>
                             <td>{h.points_before}</td>
                             <td>{h.points_after}</td>
                             <td>{h.reason || '—'}</td>
+                            <td>{h.admin?.username || '—'}</td>
+                            <td style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
+                              {new Date(h.created_at).toLocaleDateString()}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -778,7 +840,7 @@ export default function AdminPage({ user, profile }) {
             </div>
           )}
 
-          {/* FIXED & RESTORED USERS MANAGEMENT SECTION */}
+          {/* USERS MANAGEMENT SECTION */}
           {section === 'users' && (
             <div className="card">
               <div style={{ fontWeight: 700, marginBottom: '1rem', fontSize: '1.1rem' }}>👥 System Users Management</div>
@@ -810,7 +872,6 @@ export default function AdminPage({ user, profile }) {
                         <tr key={u.id}>
                           <td style={{ fontWeight: 600 }}>{u.username || '—'}</td>
                           <td>{u.email || '—'}</td>
-                          {/* FIXED FALLBACK: Safely renders whether your column is named phone or phone_number */}
                           <td>{u.phone || u.phone_number || '—'}</td>
                           <td>
                             <select 
@@ -824,7 +885,6 @@ export default function AdminPage({ user, profile }) {
                             </select>
                           </td>
                           <td>
-                            {/* FIXED BINDING: Dropdown automatically renders current user league allocation */}
                             <select 
                               className="form-select" 
                               value={u.league_id || ''} 
@@ -863,7 +923,7 @@ export default function AdminPage({ user, profile }) {
           {['leagues', 'fixtures', 'cups', 'european', 'points', 'relegation', 'logs'].includes(section) && (
             <div className="card">
               <div style={{ fontWeight: 700, marginBottom: '1rem', textTransform: 'uppercase' }}>🏟️ {section} Console</div>
-              <div className="alert alert-info">Console wrapper active. Manage dataset configurations via action menus.</div>
+              <div className="alert alert-info">Manage dataset configurations via action menus.</div>
               {section === 'relegation' && (
                 <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
                   <select className="form-select" value={genLeague} onChange={e => setGenLeague(e.target.value)} style={{ maxWidth: 300 }}>
@@ -885,11 +945,28 @@ export default function AdminPage({ user, profile }) {
               {section === 'logs' && (
                 <div className="table-wrap" style={{ marginTop: '1rem' }}>
                   <table>
-                    <thead><tr><th>Admin ID</th><th>Action performed</th><th>Timestamp</th></tr></thead>
+                    <thead>
+                      <tr>
+                        <th>Admin</th>
+                        <th>Action</th>
+                        <th>Details</th>
+                        <th>Timestamp</th>
+                      </tr>
+                    </thead>
                     <tbody>
-                      {logs.length === 0 ? <tr><td colSpan={3} style={{ textAlign: 'center', color: 'var(--muted)' }}>No audit trails fetched</td></tr> :
+                      {logs.length === 0 ? 
+                        <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--muted)' }}>No audit trails fetched</td></tr> :
                         logs.map(log => (
-                          <tr key={log.id}><td>{log.admin?.username || log.admin_id}</td><td><code>{log.action}</code></td><td>{new Date(log.created_at).toLocaleString()}</td></tr>
+                          <tr key={log.id}>
+                            <td>{log.admin?.username || log.admin_id || '—'}</td>
+                            <td><code style={{ fontSize: '0.8rem' }}>{log.action}</code></td>
+                            <td>
+                              <pre style={{ fontSize: '0.75rem', margin: 0, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {typeof log.details === 'object' ? JSON.stringify(log.details) : log.details || '—'}
+                              </pre>
+                            </td>
+                            <td style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>{new Date(log.created_at).toLocaleString()}</td>
+                          </tr>
                         ))
                       }
                     </tbody>
