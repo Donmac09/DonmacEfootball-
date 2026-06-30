@@ -186,9 +186,9 @@ export default function AdminPage({ user, profile }) {
       logger.info('Loading all admin data...');
       
       let userResponse = await apiFetch('GET', 'profiles?select=id,username,email,role,is_blocked,created_at,phone,phone_number,league_id&order=created_at.desc');
-      if (!userResponse || !Array.isArray(userResponse.data) || userResponse.data.length === 0) {
-        userResponse = await apiFetch('GET', 'users?select=id,username,email,role,is_blocked,created_at,phone,phone_number,league_id&order=created_at.desc');
-      }
+if (!userResponse || !Array.isArray(userResponse.data) || userResponse.data.length === 0) {
+  userResponse = await apiFetch('GET', 'users?select=id,username,email,role,is_blocked,created_at,phone,phone_number,league_id&order=created_at.desc');
+}
       const userData = Array.isArray(userResponse.data) ? userResponse.data : [];
 
       const [l, t, c, e, lb, pf, pcf, pef, pfp] = await Promise.all([
@@ -974,6 +974,22 @@ export default function AdminPage({ user, profile }) {
           <option key={s} value={s}>{s}</option>
         ))}
       </select>
+      
+      {/* Quick Fix Button */}
+      <button 
+        className="btn btn-warning btn-sm"
+        onClick={async () => {
+          if (!window.confirm('This will assign all users to the first available league. Continue?')) return;
+          const firstLeague = leagues[0];
+          if (!firstLeague) { showMsg('No leagues found', 'danger'); return; }
+          await rFetch('PATCH', 'profiles', { league_id: firstLeague.id }, { Prefer: 'return=minimal' });
+          await rFetch('PATCH', 'users', { league_id: firstLeague.id }, { Prefer: 'return=minimal' });
+          showMsg(`✅ All users assigned to ${firstLeague.name}`);
+          loadAll();
+        }}
+      >
+        🔧 Fix: Assign All to First League
+      </button>
     </div>
 
     {/* Create League Form */}
@@ -1064,7 +1080,12 @@ export default function AdminPage({ user, profile }) {
             <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--muted)', padding: '2rem' }}>No leagues configured</td></tr>
           ) : (
             filteredLeagues.map(l => {
+              // Count users with league_id matching this league
               const userCount = users.filter(u => u.league_id === l.id).length;
+              // Also count users from profiles table if users array is empty
+              const profileCount = users.filter(u => u.league_id === l.id).length;
+              const totalCount = userCount || profileCount;
+              
               return (
                 <tr key={l.id}>
                   <td style={{ fontWeight: 600 }}>{l.name}</td>
@@ -1073,7 +1094,7 @@ export default function AdminPage({ user, profile }) {
                   <td style={{ color: 'var(--blue)', fontWeight: 'bold' }}>{l.max_slots || 16}</td>
                   <td>{l.season || '—'}</td>
                   <td>
-                    <span className="badge badge-blue">{userCount} / {l.max_slots || 16}</span>
+                    <span className="badge badge-blue">{totalCount} / {l.max_slots || 16}</span>
                   </td>
                   <td>
                     <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
