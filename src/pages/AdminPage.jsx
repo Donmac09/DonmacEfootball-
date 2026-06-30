@@ -1350,7 +1350,7 @@ export default function AdminPage({ user, profile }) {
                           onClick={async () => {
                             const teamName = prompt(`Enter team name for ${u.username}:`, `${u.username || 'Player'}'s Team`);
                             if (teamName) {
-                              await rFetch('POST', 'teams', {
+                              const result = await rFetch('POST', 'teams', {
                                 name: teamName,
                                 user_id: u.id,
                                 league_id: u.league_id || null,
@@ -1364,15 +1364,19 @@ export default function AdminPage({ user, profile }) {
                                 goals_against: 0,
                                 goal_difference: 0
                               }, { Prefer: 'return=minimal' });
-                              showMsg(`✅ Team "${teamName}" created for ${u.username}`);
-                              loadAll();
-                            }
-                          }}
-                          title="Create Team"
-                        >
-                          ➕
-                        </button>
-                      )}
+                              if (result.ok) {
+          showMsg(`✅ Team "${teamName}" created for ${u.username}`);
+          loadAll();
+        } else {
+          showMsg(`❌ Failed to create team: ${result.data?.message || 'Unknown error'}`, 'danger');
+        }
+      }
+    }}
+    title="Create Team"
+  >
+    ➕
+  </button>
+)}
                       
                       {userTeam && (
                         <button 
