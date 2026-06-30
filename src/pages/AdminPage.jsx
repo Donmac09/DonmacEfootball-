@@ -110,7 +110,7 @@ const loadAll = useCallback(async () => {
       apiFetch('GET', 'teams?select=*&order=total_points.desc'),
       apiFetch('GET', 'cups?select=*'),
       apiFetch('GET', 'european_competitions?select=*'),
-      apiFetch('GET', 'users?select=id,username,email,role,is_blocked,created_at&order=created_at.desc'),
+      apiFetch('GET', 'profiles?select=id,username,email,role,is_blocked,created_at&order=created_at.desc'),
       apiFetch('GET', 'free_play_leaderboard?select=*&order=points.desc'),
       apiFetch('GET', 'fixtures?status=eq.pending_review&select=*,home:home_team_id(name),away:away_team_id(name),leagues(name)&order=created_at'),
       apiFetch('GET', 'cup_fixtures?status=eq.pending_review&select=*,home:home_team_id(name),away:away_team_id(name),cups(name)&order=created_at'),
@@ -353,14 +353,14 @@ useEffect(() => {
   }
 
   async function blockUser(uid, block) {
-    await rFetch('PATCH', `users?id=eq.${uid}`, { is_blocked: block }, { Prefer: 'return=minimal' });
+    await rFetch('PATCH', `profiles?id=eq.${uid}`, { is_blocked: block }, { Prefer: 'return=minimal' });
     await logAction(block ? 'block_user' : 'unblock_user', { uid });
     showMsg(block ? '🚫 User blocked' : '✅ User unblocked', block ? 'danger' : 'success');
     loadAll();
   }
 
   async function setRole(uid, role) {
-    await rFetch('PATCH', `users?id=eq.${uid}`, { role }, { Prefer: 'return=minimal' });
+    await rFetch('PATCH', `profiles?id=eq.${uid}`, { role }, { Prefer: 'return=minimal' });
     await logAction('set_role', { uid, role });
     showMsg(`✅ Role set to ${role}`);
     loadAll();
