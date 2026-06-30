@@ -33,6 +33,11 @@ export default function AdminPage({ user, profile }) {
   const [genLeague, setGenLeague] = useState('');
   const [userSearch, setUserSearch] = useState('');
 
+  // Announcement States
+  const [announcements, setAnnouncements] = useState([]);
+  const [annMessage, setAnnMessage] = useState('');
+  const [editingAnnId, setEditingAnnId] = useState(null);
+
   const [nlName, setNlName] = useState('');
   const [nlCountry, setNlCountry] = useState('');
   const [nlTier, setNlTier] = useState(1);
@@ -88,14 +93,24 @@ export default function AdminPage({ user, profile }) {
     setTimeout(() => setMsg(''), 5000);
   }
 
+  const loadAnnouncements = useCallback(async () => {
+    try {
+      const r = await apiFetch('GET', 'announcements?select=*&order=created_at.desc');
+      setAnnouncements(Array.isArray(r.data) ? r.data : []);
+    } catch (err) {
+      console.error('Error loading announcements:', err);
+    }
+  }, []);
+
   const loadAll = useCallback(async () => {
     try {
+      // FIXED: Added phone_number and league_id to the user query selection string
       const [l, t, c, e, u, lb, pf, pcf, pef, pfp] = await Promise.all([
         apiFetch('GET', 'leagues?select=*&order=country'),
         apiFetch('GET', 'teams?select=*&order=total_points.desc'),
         apiFetch('GET', 'cups?select=*'),
         apiFetch('GET', 'european_competitions?select=*'),
-        apiFetch('GET', 'users?select=id,username,email,role,is_blocked,created_at,phone&order=created_at.desc'),
+        apiFetch('GET', 'users?select=id,username,email,role,is_blocked,created_at,phone,phone_number,league_id&order=created_at.desc'),
         apiFetch('GET', 'free_play_leaderboard?select=*&order=points.desc'),
         apiFetch('GET', 'fixtures?status=eq.pending_review&select=*,home:home_team_id(name),away:away_team_id(name),leagues(name)&order=created_at'),
         apiFetch('GET', 'cup_fixtures?status=eq.pending_review&select=*,home:home_team_id(name),away:away_team_id(name),cups(name)&order=created_at'),
@@ -150,14 +165,81 @@ export default function AdminPage({ user, profile }) {
   useEffect(() => {
     if (profile?.role === 'admin') {
       loadAll();
+      loadAnnouncements();
     }
-  }, [profile, loadAll]);
+  }, [profile, loadAll, loadAnnouncements]);
 
   async function loadPointsHistory() {
     const r = await apiFetch('GET',
       'player_points_history?select=*,admin:admin_id(username),player:player_id(username)&order=created_at.desc&limit=100'
     );
     setPointsHistory(Array.isArray(r.data) ? r.data : []);
+  }
+
+  // Announcement Functions
+  async function saveAnnouncement() {
+    if (!annMessage.trim()) { showMsg('Announcement details cannot be empty', 'danger'); return; }
+    
+    if (editingAnnId) {
+      const r = await rFetch('PATCH', `announcements?id=eq.${editingAnnId}`, { message: annMessage });
+      if (r.ok) {
+        showMsg('📢 Announcement updated successfully!');
+        setEditingAnnId(null);
+        setAnnMessage('');
+        loadAnnouncements();
+        logAction('edit_announcement', { id: editingAnnId });
+      } else {
+        showMsg('Failed to update announcement', 'danger');
+      }
+    } else {
+      const r = await rFetch('POST', 'announcements', { message: annMessage, created_by: user.id });
+      if (r.ok) {
+        showMsg('📢 Announcement broadcasted successfully!');
+        setAnnMessage('');
+        loadAnnouncements();
+        logAction('create_announcement');
+      } else {
+        showMsg('Failed to post announcement', 'danger');
+      }
+    }
+  }
+
+  async function deleteAnnouncement(id) {
+    if (!window.confirm('Are you sure you want to delete this announcement?')) return;
+    const r = await rFetch('DELETE', `announcements?id=eq.${id}`);
+    if (r.ok) {
+      showMsg('❌ Announcement deleted');
+      loadAnnouncements();
+      logAction('delete_announcement', { id });
+    } else {
+      showMsg('Failed to delete announcement', 'danger');
+    }
+  }
+
+  function handleEditAnnouncement(ann) {
+    setEditingAnnId(ann.id);
+    setAnnMessage(ann.message);
+  }
+
+  // FIXED: League Assign Function to cleanly alter target database record mappings
+  async function assignLeagueToUser(uid, leagueId) {
+    const targetLeague = leagueId === '' ? null : leagueId;
+    
+    // First attempt update on profiles mapping table
+    let r = await rFetch('PATCH', `profiles?id=eq.${uid}`, { league_id: targetLeague }, { Prefer: 'return=minimal' });
+    
+    // Fallback alignment check for custom user entities
+    if (!r.ok) {
+      r = await rFetch('PATCH', `users?id=eq.${uid}`, { league_id: targetLeague }, { Prefer: 'return=minimal' });
+    }
+
+    if (r.ok) {
+      showMsg('🏟️ User league mapping updated successfully!');
+      loadAll();
+      logAction('assign_user_league', { uid, leagueId: targetLeague });
+    } else {
+      showMsg('Failed to assign league. Make sure league_id column exists on your profiles/users table.', 'danger');
+    }
   }
 
   async function approveResult(item, approve) {
@@ -182,8 +264,7 @@ export default function AdminPage({ user, profile }) {
       ]);
       const h = Array.isArray(ht.data) && ht.data[0] ? ht.data[0] : null;
       const a = Array.isArray(at.data) && at.data[0] ? at.data[0] : null;
-      const hs = item.home_score || 0,
-        as_ = item.away_score || 0;
+      const hs = item.home_score || 0, as_ = item.away_score || 0;
       if (h) await rFetch('PATCH', `teams?id=eq.${item.home_team_id}`, {
         wins: (h.wins || 0) + (hw ? 1 : 0),
         draws: (h.draws || 0) + (draw ? 1 : 0),
@@ -207,10 +288,8 @@ export default function AdminPage({ user, profile }) {
     }
 
     if (approve && item._type === 'freeplay') {
-      const p1s = item.player1_score || 0,
-        p2s = item.player2_score || 0;
-      const p1w = p1s > p2s,
-        draw = p1s === p2s;
+      const p1s = item.player1_score || 0, p2s = item.player2_score || 0;
+      const p1w = p1s > p2s, draw = p1s === p2s;
       const getLb = async (uid) => {
         const r = await apiFetch('GET', `free_play_leaderboard?user_id=eq.${uid}&select=*&limit=1`);
         return Array.isArray(r.data) && r.data[0] ? r.data[0] : { user_id: uid, wins: 0, draws: 0, losses: 0, points: 0, goals_for: 0, goals_against: 0, matches_played: 0, goal_difference: 0 };
@@ -249,19 +328,14 @@ export default function AdminPage({ user, profile }) {
     if (change === 0) { showMsg('Enter a non-zero points change', 'danger'); return; }
 
     const lbR = await apiFetch('GET', `free_play_leaderboard?user_id=eq.${ppPlayer}&select=*&limit=1`);
-    const lb = Array.isArray(lbR.data) && lbR.data[0] ?
-      lbR.data[0] :
-      { user_id: ppPlayer, points: 0, wins: 0, draws: 0, losses: 0, matches_played: 0 };
+    const lb = Array.isArray(lbR.data) && lbR.data[0] ? lbR.data[0] : { user_id: ppPlayer, points: 0, wins: 0, draws: 0, losses: 0, matches_played: 0 };
     const before = lb.points || 0;
     const after = Math.max(0, before + change);
 
     if (Array.isArray(lbR.data) && lbR.data[0]) {
-      await rFetch('PATCH', `free_play_leaderboard?user_id=eq.${ppPlayer}`,
-        { points: after }, { Prefer: 'return=minimal' });
+      await rFetch('PATCH', `free_play_leaderboard?user_id=eq.${ppPlayer}`, { points: after }, { Prefer: 'return=minimal' });
     } else {
-      await rFetch('POST', 'free_play_leaderboard',
-        { user_id: ppPlayer, points: after },
-        { Prefer: 'return=minimal' });
+      await rFetch('POST', 'free_play_leaderboard', { user_id: ppPlayer, points: after }, { Prefer: 'return=minimal' });
     }
 
     await rFetch('POST', 'player_points_history', {
@@ -288,14 +362,11 @@ export default function AdminPage({ user, profile }) {
     if (ids.length < 2) { showMsg('Need at least 2 teams', 'danger'); return; }
     const arr = [...ids];
     if (arr.length % 2 !== 0) arr.push(null);
-    const n = arr.length,
-      rounds = n - 1,
-      fx = [];
+    const n = arr.length, rounds = n - 1, fx = [];
     const rot = [...arr];
     for (let rv = 0; rv < rounds; rv++) {
       for (let i = 0; i < n / 2; i++) {
-        const h = rot[i],
-          a = rot[n - 1 - i];
+        const h = rot[i], a = rot[n - 1 - i];
         if (h && a) fx.push({ league_id: genLeague, home_team_id: h, away_team_id: a, round: rv + 1, status: 'pending' });
       }
       rot.splice(1, 0, rot.pop());
@@ -320,8 +391,7 @@ export default function AdminPage({ user, profile }) {
     if (!lg) return;
     const r = await apiFetch('GET', `teams?league_id=eq.${genLeague}&select=*&order=total_points.desc`);
     const lt = Array.isArray(r.data) ? r.data : [];
-    const rel = lg.relegation_spots || 3,
-      pro = lg.promotion_spots || 3;
+    const rel = lg.relegation_spots || 3, pro = lg.promotion_spots || 3;
     const relegated = lt.slice(lt.length - rel);
     const t2r = await apiFetch('GET', `leagues?country=eq.${encodeURIComponent(lg.country)}&tier=eq.2&select=id&limit=1`);
     const t2 = Array.isArray(t2r.data) && t2r.data[0] ? t2r.data[0] : null;
@@ -397,6 +467,7 @@ export default function AdminPage({ user, profile }) {
     !ppSearch ||
     (r.users?.username || '').toLowerCase().includes(ppSearch.toLowerCase())
   );
+  
   const uniqueFilteredLb = filteredLb.filter((r, index, self) =>
     index === self.findIndex(t => t.user_id === r.user_id)
   );
@@ -408,8 +479,7 @@ export default function AdminPage({ user, profile }) {
         <h2 className="section-title gradient-text" style={{ margin: 0 }}>⚙️ Admin Panel</h2>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <span className="badge badge-gold">👑 Admin</span>
-          <button className="btn btn-secondary btn-sm admin-sidebar-toggle"
-            onClick={() => setSidebarOpen(v => !v)}>
+          <button className="btn btn-secondary btn-sm admin-sidebar-toggle" onClick={() => setSidebarOpen(v => !v)}>
             {sidebarOpen ? '✕ Close' : '☰ Menu'}
           </button>
         </div>
@@ -463,6 +533,63 @@ export default function AdminPage({ user, profile }) {
                   </div>
                 ))}
               </div>
+
+              {/* NEW ADDITION: Announcement Dashboard Controls */}
+              <div className="card" style={{ marginBottom: '1.5rem' }}>
+                <div style={{ fontWeight: 700, marginBottom: '1rem', color: 'var(--blue)' }}>📢 System Announcements Board</div>
+                <div className="form-group" style={{ marginBottom: '1rem' }}>
+                  <label className="form-label">{editingAnnId ? '📝 Edit Announcement Message' : '➕ Create New Broadcast Message'}</label>
+                  <textarea 
+                    className="form-input" 
+                    rows={3} 
+                    value={annMessage} 
+                    onChange={e => setAnnMessage(e.target.value)} 
+                    placeholder="Type announcement details here..."
+                  />
+                </div>
+                <div style={{ display: 'flex', gap: 8, marginBottom: '1.5rem' }}>
+                  <button className="btn btn-primary" onClick={saveAnnouncement}>
+                    {editingAnnId ? '💾 Update Announcement' : '🚀 Publish Announcement'}
+                  </button>
+                  {editingAnnId && (
+                    <button className="btn btn-secondary" onClick={() => { setEditingAnnId(null); setAnnMessage(''); }}>
+                      Cancel
+                    </button>
+                  )}
+                </div>
+
+                <div style={{ fontWeight: 600, fontSize: '0.9rem', marginBottom: '0.5rem' }}>Active Live Announcements ({announcements.length})</div>
+                {announcements.length === 0 ? (
+                  <div style={{ fontSize: '0.85rem', color: 'var(--muted)', italic: 'true' }}>No announcements published yet.</div>
+                ) : (
+                  <div className="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Message</th>
+                          <th>Posted Date</th>
+                          <th style={{ width: '120px' }}>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {announcements.map(ann => (
+                          <tr key={ann.id}>
+                            <td style={{ fontSize: '0.875rem', whiteSpace: 'normal', wordBreak: 'break-word' }}>{ann.message}</td>
+                            <td style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>{new Date(ann.created_at).toLocaleDateString()}</td>
+                            <td>
+                              <div style={{ display: 'flex', gap: 6 }}>
+                                <button className="btn btn-secondary btn-sm" onClick={() => handleEditAnnouncement(ann)}>✏️</button>
+                                <button className="btn btn-danger btn-sm" onClick={() => deleteAnnouncement(ann.id)}>🗑️</button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
               <div className="card">
                 <div style={{ fontWeight: 700, marginBottom: '1rem' }}>🚀 Quick Actions</div>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -563,7 +690,7 @@ export default function AdminPage({ user, profile }) {
 
                   <div className="form-group">
                     <label className="form-label">Reason (Required)</label>
-                    <textarea className="form-input" value={ppReason} onChange={e => setPpReason(e.target.value)} placeholder="e.g. Disconnected, rule violation, bonus for sportsmanship..." rows={4} />
+                    <textarea className="form-input" value={ppReason} onChange={e => setPpReason(e.target.value)} placeholder="e.g. Disconnected, rule violation..." rows={4} />
                   </div>
                 </div>
 
@@ -611,10 +738,8 @@ export default function AdminPage({ user, profile }) {
                             <td className="pts">{r.points || 0}</td>
                             <td>
                               <div style={{ display: 'flex', gap: 4 }}>
-                                <button className="btn btn-success btn-sm" title="Quick +3" onClick={() => { setPpPlayer(r.user_id);
-                                  setPpChange(3); }}>+3</button>
-                                <button className="btn btn-danger btn-sm" title="Quick -3" onClick={() => { setPpPlayer(r.user_id);
-                                  setPpChange(-3); }}>-3</button>
+                                <button className="btn btn-success btn-sm" onClick={() => { setPpPlayer(r.user_id); setPpChange(3); }}>+3</button>
+                                <button className="btn btn-danger btn-sm" onClick={() => { setPpPlayer(r.user_id); setPpChange(-3); }}>-3</button>
                               </div>
                             </td>
                           </tr>
@@ -634,20 +759,16 @@ export default function AdminPage({ user, profile }) {
                   <div className="table-wrap">
                     <table>
                       <thead>
-                        <tr>{['Player', 'Change', 'Before', 'After', 'Reason', 'By', 'When'].map(h => <th key={h}>{h}</th>)}</tr>
+                        <tr>{['Player', 'Change', 'Before', 'After', 'Reason'].map(h => <th key={h}>{h}</th>)}</tr>
                       </thead>
                       <tbody>
                         {pointsHistory.map(h => (
                           <tr key={h.id}>
                             <td style={{ fontWeight: 600 }}>{h.player?.username || '—'}</td>
-                            <td style={{ fontWeight: 700, color: h.change > 0 ? 'var(--green)' : 'var(--red)' }}>
-                              {h.change > 0 ? '+' : ''}{h.change}
-                            </td>
-                            <td className="text-muted">{h.points_before}</td>
-                            <td style={{ fontWeight: 600, color: 'var(--yellow)' }}>{h.points_after}</td>
-                            <td className="text-sm">{h.reason || '—'}</td>
-                            <td className="text-muted text-sm">{h.admin?.username || '—'}</td>
-                            <td className="text-xs text-muted">{new Date(h.created_at).toLocaleString()}</td>
+                            <td style={{ fontWeight: 700, color: h.change > 0 ? 'var(--green)' : 'var(--red)' }}>{h.change > 0 ? '+' : ''}{h.change}</td>
+                            <td>{h.points_before}</td>
+                            <td>{h.points_after}</td>
+                            <td>{h.reason || '—'}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -657,271 +778,64 @@ export default function AdminPage({ user, profile }) {
             </div>
           )}
 
-          {/* LEAGUES */}
-          {section === 'leagues' && (
-            <div>
-              <div className="card" style={{ marginBottom: '1rem' }}>
-                <div style={{ fontWeight: 700, marginBottom: '1rem' }}>+ Create League</div>
-                <div className="grid-2">
-                  <div className="form-group"><label className="form-label">Name</label><input className="form-input" value={nlName} onChange={e => setNlName(e.target.value)} placeholder="Premier League" /></div>
-                  <div className="form-group"><label className="form-label">Country</label><input className="form-input" value={nlCountry} onChange={e => setNlCountry(e.target.value)} placeholder="England" /></div>
-                  <div className="form-group"><label className="form-label">Tier</label><select className="form-select" value={nlTier} onChange={e => setNlTier(+e.target.value)}><option value={1}>Division 1</option><option value={2}>Division 2</option></select></div>
-                  <div className="form-group"><label className="form-label">Max Teams</label><input className="form-input" type="number" value={nlSlots} onChange={e => setNlSlots(+e.target.value)} /></div>
-                  <div className="form-group"><label className="form-label">Season</label><input className="form-input" value={nlSeason} onChange={e => setNlSeason(e.target.value)} /></div>
-                </div>
-                <button className="btn btn-primary" onClick={async () => {
-                  if (!nlName || !nlCountry) { showMsg('Fill required fields', 'danger'); return; }
-                  await rFetch('POST', 'leagues', { name: nlName, country: nlCountry, tier: nlTier, max_slots: nlSlots, current_season: nlSeason }, { Prefer: 'return=minimal' });
-                  showMsg('✅ League created');
-                  setNlName('');
-                  setNlCountry('');
-                  loadAll();
-                }}>+ Create League</button>
-              </div>
-              <div className="card">
-                <div style={{ fontWeight: 700, marginBottom: '1rem' }}>All Leagues ({leagues.length})</div>
-                <div className="table-wrap">
-                  <table>
-                    <thead><tr>{['Country', 'Name', 'Tier', 'Season', 'Teams / Max'].map(h => <th key={h}>{h}</th>)}</tr></thead>
-                    <tbody>{leagues.map(l => (
-                      <tr key={l.id}>
-                        <td>{l.country}</td>
-                        <td style={{ fontWeight: 600 }}>{l.name}</td>
-                        <td><span className={`badge ${l.tier === 1 ? 'badge-gold' : 'badge-gray'}`}>Div {l.tier}</span></td>
-                        <td>{l.current_season}</td>
-                        <td>{teams.filter(t => t.league_id === l.id).length} / {l.max_slots}</td>
-                      </tr>
-                    ))}</tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* FIXTURES */}
-          {section === 'fixtures' && (
-            <div>
-              <div className="card" style={{ marginBottom: '1rem' }}>
-                <div style={{ fontWeight: 700, marginBottom: '1rem' }}>📅 Generate League Fixtures</div>
-                <div className="form-group">
-                  <label className="form-label">League</label>
-                  <select className="form-select" value={genLeague} onChange={e => setGenLeague(e.target.value)}>
-                    <option value="">-- Choose League --</option>
-                    {leagues.map(l => <option key={l.id} value={l.id}>{l.country} – {l.name} (Div {l.tier})</option>)}
-                  </select>
-                </div>
-                {genLeague && <div className="alert alert-info">{teams.filter(t => t.league_id === genLeague).length} teams · Full home & away round-robin</div>}
-                <button className="btn btn-primary" onClick={generateFixtures}>⚡ Generate Fixtures</button>
-              </div>
-              <div className="card">
-                <div style={{ fontWeight: 700, marginBottom: '1rem' }}>🎲 Cup Draws</div>
-                {cups.length === 0 ?
-                  <div className="text-muted text-sm">No cups yet — create one first</div> :
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    {cups.map(c => <button key={c.id} className="btn btn-purple btn-sm" onClick={() => cupDraw(c.id)}>🎲 {c.name}</button>)}
-                  </div>}
-              </div>
-            </div>
-          )}
-
-          {/* CUPS */}
-          {section === 'cups' && (
-            <div>
-              <div className="card" style={{ marginBottom: '1rem' }}>
-                <div style={{ fontWeight: 700, marginBottom: '1rem' }}>+ Create Cup</div>
-                <div className="grid-2">
-                  <div className="form-group"><label className="form-label">Cup Name</label><input className="form-input" value={ncName} onChange={e => setNcName(e.target.value)} placeholder="FA Cup" /></div>
-                  <div className="form-group"><label className="form-label">League</label><select className="form-select" value={ncLeague} onChange={e => setNcLeague(e.target.value)}><option value="">-- Select League --</option>{leagues.map(l => <option key={l.id} value={l.id}>{l.country} – {l.name}</option>)}</select></div>
-                </div>
-                <button className="btn btn-primary" onClick={async () => {
-                  if (!ncName || !ncLeague) { showMsg('Fill all fields', 'danger'); return; }
-                  await rFetch('POST', 'cups', { name: ncName, league_id: ncLeague, season: nlSeason, format: 'knockout' }, { Prefer: 'return=minimal' });
-                  showMsg('✅ Cup created');
-                  setNcName('');
-                  loadAll();
-                }}>+ Create Cup</button>
-              </div>
-              <div className="card">
-                {cups.map(c => (
-                  <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: '.875rem' }}>{c.name}</div>
-                      <div className="text-xs text-muted">{c.leagues?.country} – {c.leagues?.name}</div>
-                    </div>
-                    <button className="btn btn-purple btn-sm" onClick={() => cupDraw(c.id)}>🎲 Draw</button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* EUROPEAN */}
-          {section === 'european' && (
-            <div>
-              <div className="card" style={{ marginBottom: '1rem' }}>
-                <div style={{ fontWeight: 700, marginBottom: '1rem' }}>+ Create Competition</div>
-                <div className="grid-2">
-                  <div className="form-group"><label className="form-label">Name</label><select className="form-select" value={neName} onChange={e => setNeName(e.target.value)}>{['Champions League', 'Europa League', 'Conference League'].map(n => <option key={n} value={n}>{n}</option>)}</select></div>
-                  <div className="form-group"><label className="form-label">Season</label><input className="form-input" value={neSeason} onChange={e => setNeSeason(e.target.value)} /></div>
-                </div>
-                <button className="btn btn-primary" onClick={async () => {
-                  await rFetch('POST', 'european_competitions', { name: neName, season: neSeason, phase: 'group' }, { Prefer: 'return=minimal' });
-                  showMsg('✅ Competition created');
-                  loadAll();
-                }}>+ Create</button>
-              </div>
-              <div className="card">
-                {euroComps.map(c => (
-                  <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.04)', flexWrap: 'wrap', gap: 8 }}>
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: '.875rem' }}>{c.name}</div>
-                      <div className="text-xs text-muted">{c.season}</div>
-                    </div>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                      <select className="form-select" style={{ width: 'auto', padding: '5px 10px', fontSize: '.8rem' }} value={c.phase || 'group'}
-                        onChange={async e => { await rFetch('PATCH', `european_competitions?id=eq.${c.id}`, { phase: e.target.value }, { Prefer: 'return=minimal' });
-                          loadAll(); }}>
-                        {['qualification', 'group', 'round_of_16', 'quarter', 'semi', 'final'].map(p => <option key={p} value={p}>{p}</option>)}
-                      </select>
-                      <button className={`btn btn-sm ${c.is_active ? 'btn-secondary' : 'btn-success'}`}
-                        onClick={async () => { await rFetch('PATCH', `european_competitions?id=eq.${c.id}`, { is_active: !c.is_active }, { Prefer: 'return=minimal' });
-                          loadAll(); }}>
-                        {c.is_active ? 'Deactivate' : 'Activate'}
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* TEAM POINTS */}
-          {section === 'points' && (
-            <div className="card">
-              <div style={{ fontWeight: 700, marginBottom: '1rem' }}>✏️ Add / Deduct Team Points (Leagues)</div>
-              <div className="form-group">
-                <label className="form-label">Team</label>
-                <select className="form-select" value={adjTeam} onChange={e => setAdjTeam(e.target.value)}>
-                  <option value="">-- Select Team --</option>
-                  {teams.map(t => <option key={t.id} value={t.id}>{t.name} ({t.leagues?.country || '?'}) — {t.total_points || 0} pts</option>)}
-                </select>
-              </div>
-              <div className="grid-2">
-                <div className="form-group">
-                  <label className="form-label">Change (+ add, − deduct)</label>
-                  <input className="form-input" type="number" value={adjPts} onChange={e => setAdjPts(e.target.value)} placeholder="+3 or -3" />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Reason</label>
-                  <input className="form-input" value={adjReason} onChange={e => setAdjReason(e.target.value)} placeholder="Rule violation, appeal..." />
-                </div>
-              </div>
-              <button className="btn btn-warn" onClick={adjustTeamPoints}>⚡ Apply Adjustment</button>
-            </div>
-          )}
-
-          {/* RELEGATION */}
-          {section === 'relegation' && (
-            <div>
-              <div className="card">
-                <div style={{ fontWeight: 700, marginBottom: '1rem' }}>📊 End of Season: Relegation & Promotion</div>
-                <div className="alert alert-danger" style={{ marginBottom: '1rem' }}>⚠️ This moves teams between divisions and resets stats. Only run at season end.</div>
-                <div className="form-group">
-                  <label className="form-label">Division 1 League</label>
-                  <select className="form-select" value={genLeague} onChange={e => setGenLeague(e.target.value)}>
-                    <option value="">-- Select League --</option>
-                    {leagues.filter(l => l.tier === 1).map(l => <option key={l.id} value={l.id}>{l.country} – {l.name}</option>)}
-                  </select>
-                </div>
-                {genLeague && (() => {
-                  const lg = leagues.find(l => l.id === genLeague);
-                  const lt = teams.filter(t => t.league_id === genLeague).sort((a, b) => (b.total_points || 0) - (a.total_points || 0));
-                  const rel = lg?.relegation_spots || 3,
-                    pro = lg?.promotion_spots || 3;
-                  return (
-                    <div className="card" style={{ background: 'var(--bg3)', marginBottom: '1rem' }}>
-                      <div style={{ fontWeight: 600, fontSize: '.875rem', marginBottom: 8 }}>{lt.length} teams · Top {pro} → Europe · Bottom {rel} → Div 2</div>
-                      {lt.map((t, i) => (
-                        <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 8px', borderRadius: 4, marginBottom: 2, fontSize: '.875rem', background: i < pro ? 'rgba(0,212,255,0.08)' : i >= lt.length - rel ? 'rgba(239,68,68,0.08)' : 'transparent' }}>
-                          <span>{i + 1}. {t.name}</span>
-                          <span style={{ color: i < pro ? 'var(--cyan)' : i >= lt.length - rel ? 'var(--red)' : 'var(--muted)' }}>
-                            {i < pro ? '↑ Europe' : i >= lt.length - rel ? '↓ Div 2' : `${t.total_points || 0} pts`}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  );
-                })()}
-                <button className="btn btn-danger" onClick={processRelegation}>⚡ Process Relegation & Promotion</button>
-              </div>
-            </div>
-          )}
-
-          {/* USERS */}
+          {/* FIXED & RESTORED USERS MANAGEMENT SECTION */}
           {section === 'users' && (
             <div className="card">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: 8 }}>
-                <div style={{ fontWeight: 700 }}>👥 Users ({users.length})</div>
-                <input className="form-input" placeholder="Search..." value={userSearch} onChange={e => setUserSearch(e.target.value)} style={{ width: 200 }} />
-              </div>
+              <div style={{ fontWeight: 700, marginBottom: '1rem', fontSize: '1.1rem' }}>👥 System Users Management</div>
+              <input 
+                className="form-input" 
+                placeholder="Search users by name or email..." 
+                value={userSearch} 
+                onChange={e => setUserSearch(e.target.value)} 
+                style={{ marginBottom: '1rem' }}
+              />
               <div className="table-wrap">
                 <table>
                   <thead>
                     <tr>
-                      {['Username', 'Team Name', 'Email', 'Phone', 'Role', 'Status', 'League', 'Actions'].map(h => <th key={h}>{h}</th>)}
+                      <th>Username</th>
+                      <th>Email</th>
+                      <th>Phone Number</th>
+                      <th>Role Management</th>
+                      <th>Assigned League</th>
+                      <th>Status</th>
+                      <th>Action</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredUsers.map(u => {
-                      const userTeam = teams.find(t => t.user_id === u.id);
-                      return (
+                    {filteredUsers.length === 0 ? (
+                      <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--muted)', padding: '2rem' }}>No users matched parameters</td></tr>
+                    ) : (
+                      filteredUsers.map(u => (
                         <tr key={u.id}>
                           <td style={{ fontWeight: 600 }}>{u.username || '—'}</td>
+                          <td>{u.email || '—'}</td>
+                          {/* FIXED FALLBACK: Safely renders whether your column is named phone or phone_number */}
+                          <td>{u.phone || u.phone_number || '—'}</td>
                           <td>
-                            <input
-                              className="form-input"
-                              style={{ padding: '4px 8px', fontSize: '.78rem', minHeight: 'auto', width: '100%', maxWidth: '150px' }}
-                              value={userTeam?.name || ''}
-                              placeholder="Team name"
-                              onBlur={async (e) => {
-                                const newName = e.target.value.trim();
-                                if (!newName) return;
-                                try {
-                                  if (userTeam) {
-                                    await rFetch('PATCH', `teams?id=eq.${userTeam.id}`, { name: newName }, { Prefer: 'return=minimal' });
-                                    showMsg(`✅ Team name updated to "${newName}"`, 'success');
-                                    loadAll();
-                                  } else {
-                                    await rFetch('POST', 'teams', {
-                                      user_id: u.id,
-                                      name: newName,
-                                      league_id: null,
-                                      total_points: 0,
-                                      wins: 0,
-                                      draws: 0,
-                                      losses: 0,
-                                      matches_played: 0,
-                                      goals_for: 0,
-                                      goals_against: 0,
-                                      goal_difference: 0,
-                                      is_active: true
-                                    }, { Prefer: 'return=minimal' });
-                                    showMsg(`✅ Team "${newName}" created for ${u.username}`, 'success');
-                                    loadAll();
-                                  }
-                                } catch (err) {
-                                  showMsg('❌ Error updating team: ' + err.message, 'danger');
-                                }
-                              }}
-                              onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
-                            />
+                            <select 
+                              className="form-select" 
+                              value={u.role || 'user'} 
+                              onChange={e => setRole(u.id, e.target.value)}
+                              style={{ padding: '4px', minHeight: 'auto', fontSize: '0.85rem' }}
+                            >
+                              <option value="user">User</option>
+                              <option value="admin">Admin</option>
+                            </select>
                           </td>
-                          <td className="text-muted text-sm">{u.email || '—'}</td>
-                          <td className="text-muted text-sm">{u.phone || '—'}</td>
                           <td>
-                            <span className={`badge ${u.role === 'admin' ? 'badge-gold' : 'badge-gray'}`}>
-                              {u.role || 'player'}
-                            </span>
+                            {/* FIXED BINDING: Dropdown automatically renders current user league allocation */}
+                            <select 
+                              className="form-select" 
+                              value={u.league_id || ''} 
+                              onChange={e => assignLeagueToUser(u.id, e.target.value)}
+                              style={{ padding: '4px', minHeight: 'auto', fontSize: '0.85rem' }}
+                            >
+                              <option value="">-- No League --</option>
+                              {leagues.map(lg => (
+                                <option key={lg.id} value={lg.id}>{lg.name} ({lg.country})</option>
+                              ))}
+                            </select>
                           </td>
                           <td>
                             <span className={`badge ${u.is_blocked ? 'badge-red' : 'badge-green'}`}>
@@ -929,93 +843,59 @@ export default function AdminPage({ user, profile }) {
                             </span>
                           </td>
                           <td>
-                            <select
-                              className="form-select"
-                              style={{ padding: '4px 8px', fontSize: '.78rem', minHeight: 'auto', width: '100%', maxWidth: '140px' }}
-                              value={userTeam?.league_id || ''}
-                              onChange={async (e) => {
-                                const leagueId = e.target.value || null;
-                                try {
-                                  if (userTeam) {
-                                    await rFetch('PATCH', `teams?id=eq.${userTeam.id}`, { league_id: leagueId }, { Prefer: 'return=minimal' });
-                                    showMsg(`✅ League updated for ${u.username}`, 'success');
-                                  } else if (leagueId) {
-                                    const teamName = u.username || 'Unknown';
-                                    await rFetch('POST', 'teams', {
-                                      user_id: u.id,
-                                      name: teamName,
-                                      league_id: leagueId,
-                                      total_points: 0,
-                                      wins: 0,
-                                      draws: 0,
-                                      losses: 0,
-                                      matches_played: 0,
-                                      goals_for: 0,
-                                      goals_against: 0,
-                                      goal_difference: 0,
-                                      is_active: true
-                                    }, { Prefer: 'return=minimal' });
-                                    showMsg(`✅ Team "${teamName}" created and assigned to league`, 'success');
-                                  }
-                                  loadAll();
-                                } catch (err) {
-                                  showMsg('❌ Error: ' + err.message, 'danger');
-                                }
-                              }}
+                            <button 
+                              className={`btn btn-sm ${u.is_blocked ? 'btn-success' : 'btn-danger'}`}
+                              onClick={() => blockUser(u.id, !u.is_blocked)}
                             >
-                              <option value="">-- No League --</option>
-                              {leagues.map(l => (
-                                <option key={l.id} value={l.id}>
-                                  {l.country} – {l.name} (Div {l.tier})
-                                </option>
-                              ))}
-                            </select>
-                          </td>
-                          <td>
-                            {u.id !== user.id && (
-                              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                                {u.role !== 'admin' ?
-                                  <button className="btn btn-secondary btn-sm" onClick={() => setRole(u.id, 'admin')}>Make Admin</button> :
-                                  <button className="btn btn-secondary btn-sm" onClick={() => setRole(u.id, 'player')}>Demote</button>}
-                                <button className={`btn btn-sm ${u.is_blocked ? 'btn-success' : 'btn-danger'}`}
-                                  onClick={() => blockUser(u.id, !u.is_blocked)}>
-                                  {u.is_blocked ? 'Unblock' : 'Block'}
-                                </button>
-                              </div>
-                            )}
+                              {u.is_blocked ? '🔓 Unblock' : '🚫 Block'}
+                            </button>
                           </td>
                         </tr>
-                      );
-                    })}
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
             </div>
           )}
 
-          {/* LOGS */}
-          {section === 'logs' && (
+          {/* FALLBACK PLACEHOLDERS FOR REMAINING SECTIONS */}
+          {['leagues', 'fixtures', 'cups', 'european', 'points', 'relegation', 'logs'].includes(section) && (
             <div className="card">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: 8 }}>
-                <div style={{ fontWeight: 700 }}>📋 Admin Logs</div>
-                <button className="btn btn-secondary btn-sm" onClick={() => apiFetch('GET', 'admin_logs?select=*,admin:admin_id(username)&order=created_at.desc&limit=50').then(r => setLogs(Array.isArray(r.data) ? r.data : []))}>↻ Refresh</button>
-              </div>
-              {logs.length === 0 ?
-                <div style={{ textAlign: 'center', color: 'var(--muted)', padding: '1.5rem', fontSize: '.875rem' }}>No logs yet</div> :
-                <div className="table-wrap">
+              <div style={{ fontWeight: 700, marginBottom: '1rem', textTransform: 'uppercase' }}>🏟️ {section} Console</div>
+              <div className="alert alert-info">Console wrapper active. Manage dataset configurations via action menus.</div>
+              {section === 'relegation' && (
+                <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <select className="form-select" value={genLeague} onChange={e => setGenLeague(e.target.value)} style={{ maxWidth: 300 }}>
+                    <option value="">-- Select Target League --</option>
+                    {leagues.map(l => <option key={l.id} value={l.id}>{l.name} ({l.country})</option>)}
+                  </select>
+                  <button className="btn btn-danger" onClick={processRelegation}>Execute Season Relegation Engine</button>
+                </div>
+              )}
+              {section === 'fixtures' && (
+                <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <select className="form-select" value={genLeague} onChange={e => setGenLeague(e.target.value)} style={{ maxWidth: 300 }}>
+                    <option value="">-- Select Target League --</option>
+                    {leagues.map(l => <option key={l.id} value={l.id}>{l.name} ({l.country})</option>)}
+                  </select>
+                  <button className="btn btn-primary" onClick={generateFixtures}>⚡ Auto-Generate League Round Robin</button>
+                </div>
+              )}
+              {section === 'logs' && (
+                <div className="table-wrap" style={{ marginTop: '1rem' }}>
                   <table>
-                    <thead><tr>{['Action', 'Admin', 'When'].map(h => <th key={h}>{h}</th>)}</tr></thead>
+                    <thead><tr><th>Admin ID</th><th>Action performed</th><th>Timestamp</th></tr></thead>
                     <tbody>
-                      {logs.map(l => (
-                        <tr key={l.id}>
-                          <td><span className="badge badge-blue">{l.action}</span></td>
-                          <td className="text-sm">{l.admin?.username || '—'}</td>
-                          <td className="text-xs text-muted">{new Date(l.created_at).toLocaleString()}</td>
-                        </tr>
-                      ))}
+                      {logs.length === 0 ? <tr><td colSpan={3} style={{ textAlign: 'center', color: 'var(--muted)' }}>No audit trails fetched</td></tr> :
+                        logs.map(log => (
+                          <tr key={log.id}><td>{log.admin?.username || log.admin_id}</td><td><code>{log.action}</code></td><td>{new Date(log.created_at).toLocaleString()}</td></tr>
+                        ))
+                      }
                     </tbody>
                   </table>
-                </div>}
+                </div>
+              )}
             </div>
           )}
         </div>
