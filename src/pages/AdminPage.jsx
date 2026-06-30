@@ -32,6 +32,7 @@ export default function AdminPage({ user, profile }) {
   const [screenshot, setScreenshot] = useState(null);
   const [genLeague, setGenLeague] = useState('');
   const [userSearch, setUserSearch] = useState('');
+  const [fixtureList, setFixtureList] = useState([]);
 
   const [announcements, setAnnouncements] = useState([]);
   const [annMessage, setAnnMessage] = useState('');
@@ -484,7 +485,6 @@ export default function AdminPage({ user, profile }) {
     return; 
   }
   
-  // Get all teams in the league
   const r = await apiFetch('GET', `teams?league_id=eq.${genLeague}&is_active=eq.true&select=id`);
   const ids = Array.isArray(r.data) ? r.data.map(t => t.id) : [];
   
@@ -493,7 +493,6 @@ export default function AdminPage({ user, profile }) {
     return; 
   }
   
-  // Generate fixtures
   const arr = [...ids];
   if (arr.length % 2 !== 0) arr.push(null);
   const n = arr.length, rounds = n - 1, fx = [];
@@ -525,19 +524,18 @@ export default function AdminPage({ user, profile }) {
   
   const allFixtures = [...fx, ...ret];
   
-  // Log what we're about to insert
-  console.log('📅 Generating fixtures:', allFixtures.length);
-  console.log('📅 First fixture:', allFixtures[0]);
-  
   const result = await rFetch('POST', 'fixtures', allFixtures, { Prefer: 'return=minimal' });
   
   if (result.ok) {
     showMsg(`✅ Generated ${allFixtures.length} fixtures (${rounds} rounds × 2 legs)`);
     await logAction('generate_fixtures', { league_id: genLeague, count: allFixtures.length });
     loadAll();
+    
+    // Refresh fixture list
+    const refresh = await apiFetch('GET', `fixtures?league_id=eq.${genLeague}&select=*,home:home_team_id(name),away:away_team_id(name)&order=round`);
+    setFixtureList(Array.isArray(refresh.data) ? refresh.data : []);
   } else {
     showMsg(`❌ Failed to generate fixtures: ${result.data?.message || 'Unknown error'}`, 'danger');
-    console.error('Fixture generation failed:', result);
   }
 }
   async function processRelegation() {
@@ -1038,19 +1036,153 @@ export default function AdminPage({ user, profile }) {
           )}
 
           {/* FIXTURES */}
-          {section === 'fixtures' && (
-            <div className="card">
-              <div style={{ fontWeight: 700, marginBottom: '1rem', fontSize: '1.1rem' }}>📅 Fixtures Generator</div>
-              <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
-                <select className="form-select" value={genLeague} onChange={e => setGenLeague(e.target.value)} style={{ minWidth: '200px' }}>
-                  <option value="">-- Select League --</option>
-                  {leagues.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                </select>
-                <button className="btn btn-primary" onClick={generateFixtures}>⚡ Generate Round Robin</button>
-              </div>
-              <div className="alert alert-info">Select a league and click generate to create fixtures for all teams</div>
-            </div>
+{section === 'fixtures' && (
+  <div className="card">
+    <div style={{ fontWeight: 700, marginBottom: '1rem', fontSize: '1.1rem' }}>📅 Fixtures Manager</div>
+    
+    {/* Generate Fixtures */}
+    <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+      <select 
+        className="form-select" 
+        value={genLeague} 
+        onChange={async (e) => {
+          setGenLeague(e.target.value);
+          if (e.target.value) {
+            const r = await apiFetch('GET', `fixtures?league_id=eq.${e.target.value}&select=*,home:home_team_id(name),away:away_team_id(name)&order=round`);
+            setFixtureList(Array.isArray(r.data) ? r.data : []);
+          } else {
+            setFixtureList([]);
+          }
+        }} 
+        style={{ minWidth: '200px' }}
+      >
+        <option value="">-- Select League --</option>
+        {leagues.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+      </select>
+      <button className="btn btn-primary" onClick={generateFixtures}>⚡ Generate Round Robin</button>
+    </div>
+
+    {/* Schedule Fixtures */}
+    <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem', alignItems: 'center' }}>
+      <button 
+        className="btn btn-success"
+        onClick={async () => {
+          if (!genLeague) { showMsg('Select a league first', 'danger'); return; }
+          
+          // Get all fixtures for this league
+          const r = await apiFetch('GET', `fixtures?league_id=eq.${genLeague}&select=*,home:home_team_id(name),away:away_team_id(name)&order=round`);
+          const fixtures = Array.isArray(r.data) ? r.data : [];
+          
+          if (fixtures.length === 0) {
+            showMsg('No fixtures found for this league', 'danger');
+            return;
+          }
+          
+          // Schedule each fixture (2 days apart)
+          let date = new Date();
+          date.setDate(date.getDate() + 7); // Start 1 week from now
+          let scheduled = 0;
+          
+          for (const fixture of fixtures) {
+            const scheduledDate = new Date(date);
+            scheduledDate.setDate(date.getDate() + (fixture.round - 1) * 2); // 2 days between rounds
+            
+            const result = await rFetch('PATCH', `fixtures?id=eq.${fixture.id}`, {
+              scheduled_date: scheduledDate.toISOString()
+            }, { Prefer: 'return=minimal' });
+            
+            if (result.ok) scheduled++;
+          }
+          
+          showMsg(`✅ Scheduled ${scheduled} fixtures`);
+          // Refresh fixture list
+          const refresh = await apiFetch('GET', `fixtures?league_id=eq.${genLeague}&select=*,home:home_team_id(name),away:away_team_id(name)&order=round`);
+          setFixtureList(Array.isArray(refresh.data) ? refresh.data : []);
+          loadAll();
+        }}
+      >
+        📅 Auto-Schedule All (2 days apart)
+      </button>
+      
+      <span style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>
+        {fixtureList.length} fixtures loaded
+      </span>
+    </div>
+
+    {/* Display Fixtures */}
+    <div className="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Round</th>
+            <th>Home</th>
+            <th>Away</th>
+            <th>Status</th>
+            <th>Scheduled Date</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {fixtureList.length === 0 ? (
+            <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--muted)', padding: '2rem' }}>No fixtures found. Generate fixtures first.</td></tr>
+          ) : (
+            fixtureList.map(f => (
+              <tr key={f.id}>
+                <td>Round {f.round}</td>
+                <td>{f.home?.name || '—'}</td>
+                <td>{f.away?.name || '—'}</td>
+                <td>
+                  <span className={`badge ${f.status === 'approved' ? 'badge-green' : f.status === 'pending_review' ? 'badge-warn' : 'badge-gray'}`}>
+                    {f.status || 'pending'}
+                  </span>
+                </td>
+                <td>
+                  {f.scheduled_date ? new Date(f.scheduled_date).toLocaleString() : 'Not scheduled'}
+                </td>
+                <td>
+                  <button 
+                    className="btn btn-sm btn-secondary"
+                    onClick={async () => {
+                      const date = prompt('Enter date (YYYY-MM-DD):', f.scheduled_date ? new Date(f.scheduled_date).toISOString().split('T')[0] : '');
+                      const time = prompt('Enter time (HH:MM):', '19:00');
+                      if (date && time) {
+                        const scheduledDate = new Date(`${date}T${time}:00`);
+                        await rFetch('PATCH', `fixtures?id=eq.${f.id}`, {
+                          scheduled_date: scheduledDate.toISOString()
+                        }, { Prefer: 'return=minimal' });
+                        showMsg(`✅ Fixture scheduled for ${date} ${time}`);
+                        // Refresh fixture list
+                        const refresh = await apiFetch('GET', `fixtures?league_id=eq.${genLeague}&select=*,home:home_team_id(name),away:away_team_id(name)&order=round`);
+                        setFixtureList(Array.isArray(refresh.data) ? refresh.data : []);
+                        loadAll();
+                      }
+                    }}
+                  >
+                    📅 Schedule
+                  </button>
+                  <button 
+                    className="btn btn-sm btn-danger"
+                    onClick={async () => {
+                      if (window.confirm(`Delete this fixture?`)) {
+                        await rFetch('DELETE', `fixtures?id=eq.${f.id}`, null, { Prefer: 'return=minimal' });
+                        showMsg('🗑️ Fixture deleted');
+                        const refresh = await apiFetch('GET', `fixtures?league_id=eq.${genLeague}&select=*,home:home_team_id(name),away:away_team_id(name)&order=round`);
+                        setFixtureList(Array.isArray(refresh.data) ? refresh.data : []);
+                        loadAll();
+                      }
+                    }}
+                  >
+                    🗑️
+                  </button>
+                </td>
+              </tr>
+            ))
           )}
+        </tbody>
+      </table>
+    </div>
+  </div>
+)}
 
           {/* CUPS */}
           {section === 'cups' && (
