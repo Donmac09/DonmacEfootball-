@@ -1408,6 +1408,7 @@ export default function AdminPage({ user, profile }) {
     </div>
   </div>
 )}
+          
           {/* TEAMS MANAGEMENT */}
 {section === 'teams' && (
   <div className="card">
