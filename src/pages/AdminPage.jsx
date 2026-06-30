@@ -127,7 +127,6 @@ export default function AdminPage({ user, profile }) {
     try {
       logger.info('Loading all admin data...');
       
-      // FIXED: Proper user loading from profiles table
       let userResponse = await apiFetch('GET', 'profiles?select=id,username,email,role,is_blocked,created_at,phone,phone_number,league_id&order=created_at.desc');
       if (!userResponse || !Array.isArray(userResponse.data) || userResponse.data.length === 0) {
         userResponse = await apiFetch('GET', 'users?select=id,username,email,role,is_blocked,created_at,phone,phone_number,league_id&order=created_at.desc');
@@ -258,6 +257,83 @@ export default function AdminPage({ user, profile }) {
   function handleEditAnnouncement(ann) {
     setEditingAnnId(ann.id);
     setAnnMessage(ann.message);
+  }
+
+  // ========== LEAGUE FUNCTIONS ==========
+  async function createNewLeague() {
+    if (!nlName || !nlCountry) { 
+      showMsg('Please fill in all league fields', 'danger'); 
+      return; 
+    }
+    
+    const r = await rFetch('POST', 'leagues', {
+      name: nlName,
+      country: nlCountry,
+      tier: parseInt(nlTier) || 1,
+      slots: parseInt(nlSlots) || 16,
+      season: nlSeason || '2024-25'
+    });
+    
+    if (r.ok) {
+      showMsg('🏟️ New League created successfully!');
+      setNlName('');
+      setNlCountry('');
+      setNlTier(1);
+      setNlSlots(16);
+      setNlSeason('2024-25');
+      loadAll();
+      logAction('create_league', { name: nlName, country: nlCountry });
+      logger.success('League created', { name: nlName, country: nlCountry });
+    } else {
+      showMsg('Failed to create league: ' + (r.data?.message || 'Unknown error'), 'danger');
+      logger.error('Failed to create league', r.data);
+    }
+  }
+
+  // ========== EUROPEAN COMPETITION FUNCTIONS ==========
+  async function createEuropeanCompetition() {
+    if (!neName) { 
+      showMsg('Please enter a competition name', 'danger'); 
+      return; 
+    }
+    
+    const r = await rFetch('POST', 'european_competitions', {
+      name: neName,
+      season: neSeason || '2024-25'
+    });
+    
+    if (r.ok) {
+      showMsg('🇪🇺 European competition created successfully!');
+      setNeName('');
+      setNeSeason('2024-25');
+      loadAll();
+      logAction('create_european_competition', { name: neName });
+    } else {
+      showMsg('Failed to create competition', 'danger');
+    }
+  }
+
+  // ========== CUP FUNCTIONS ==========
+  async function createCup() {
+    if (!ncName || !ncLeague) { 
+      showMsg('Please fill in all cup fields', 'danger'); 
+      return; 
+    }
+    
+    const r = await rFetch('POST', 'cups', {
+      name: ncName,
+      league_id: ncLeague
+    });
+    
+    if (r.ok) {
+      showMsg('🏆 Cup created successfully!');
+      setNcName('');
+      setNcLeague('');
+      loadAll();
+      logAction('create_cup', { name: ncName });
+    } else {
+      showMsg('Failed to create cup', 'danger');
+    }
   }
 
   async function assignLeagueToUser(uid, leagueId) {
@@ -823,17 +899,17 @@ export default function AdminPage({ user, profile }) {
             </div>
           )}
 
-          {/* LEAGUES - FIXED: Full functionality */}
+          {/* LEAGUES */}
           {section === 'leagues' && (
             <div className="card">
               <div style={{ fontWeight: 700, marginBottom: '1rem', fontSize: '1.1rem' }}>🏟️ League Management</div>
               
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.5rem', marginBottom: '1rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.5rem', marginBottom: '1rem' }}>
                 <input className="form-input" placeholder="League Name" value={nlName} onChange={e => setNlName(e.target.value)} />
                 <input className="form-input" placeholder="Country" value={nlCountry} onChange={e => setNlCountry(e.target.value)} />
                 <input className="form-input" type="number" placeholder="Tier" value={nlTier} onChange={e => setNlTier(parseInt(e.target.value) || 1)} />
                 <input className="form-input" type="number" placeholder="Slots" value={nlSlots} onChange={e => setNlSlots(parseInt(e.target.value) || 16)} />
-                <input className="form-input" placeholder="Season (e.g. 2024-25)" value={nlSeason} onChange={e => setNlSeason(e.target.value)} />
+                <input className="form-input" placeholder="Season" value={nlSeason} onChange={e => setNlSeason(e.target.value)} />
               </div>
               <button className="btn btn-primary" onClick={createNewLeague} style={{ marginBottom: '1rem' }}>➕ Create League</button>
 
@@ -868,7 +944,7 @@ export default function AdminPage({ user, profile }) {
             </div>
           )}
 
-          {/* FIXTURES - FIXED: Full functionality */}
+          {/* FIXTURES */}
           {section === 'fixtures' && (
             <div className="card">
               <div style={{ fontWeight: 700, marginBottom: '1rem', fontSize: '1.1rem' }}>📅 Fixtures Generator</div>
@@ -893,8 +969,9 @@ export default function AdminPage({ user, profile }) {
                   <option value="">-- Select League --</option>
                   {leagues.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
                 </select>
+                <button className="btn btn-primary" onClick={createCup}>🏆 Create Cup</button>
+                <button className="btn btn-secondary" onClick={() => cupDraw(ncLeague)} disabled={!ncLeague}>🎲 Draw Cup</button>
               </div>
-              <button className="btn btn-primary" onClick={() => cupDraw(ncLeague)} style={{ marginBottom: '1rem' }}>🎲 Draw Cup</button>
               <div className="table-wrap">
                 <table>
                   <thead>
@@ -929,8 +1006,8 @@ export default function AdminPage({ user, profile }) {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.5rem', marginBottom: '1rem' }}>
                 <input className="form-input" placeholder="Competition Name" value={neName} onChange={e => setNeName(e.target.value)} />
                 <input className="form-input" placeholder="Season" value={neSeason} onChange={e => setNeSeason(e.target.value)} />
+                <button className="btn btn-primary" onClick={createEuropeanCompetition}>➕ Create Competition</button>
               </div>
-              <button className="btn btn-primary" style={{ marginBottom: '1rem' }}>➕ Create Competition</button>
               <div className="table-wrap">
                 <table>
                   <thead>
@@ -969,8 +1046,8 @@ export default function AdminPage({ user, profile }) {
                 </select>
                 <input className="form-input" type="number" placeholder="Points Change" value={adjPts} onChange={e => setAdjPts(parseInt(e.target.value) || 0)} />
                 <input className="form-input" placeholder="Reason" value={adjReason} onChange={e => setAdjReason(e.target.value)} />
+                <button className="btn btn-primary" onClick={adjustTeamPoints}>✏️ Apply Points Adjustment</button>
               </div>
-              <button className="btn btn-primary" onClick={adjustTeamPoints}>✏️ Apply Points Adjustment</button>
             </div>
           )}
 
