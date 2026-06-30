@@ -5,15 +5,10 @@ export async function getProfile(uid) {
   if (!uid) return null;
   try {
     const token = sessionStore.session?.access_token ?? SUPABASE_KEY;
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/profiles?select=*&id=eq.${uid}&limit=1`, {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/users?select=*&id=eq.${uid}&limit=1`, {
       headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${token}`, Accept: 'application/json' },
     });
-    if (!res.ok) return null;
-    const rows = await res.json();
-    return rows.length > 0 ? rows[0] : null;
-  } catch (e) {
-    console.error('getProfile error:', e);
-    return null;
+    // ...
   }
 }
 
