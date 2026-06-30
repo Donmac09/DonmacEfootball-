@@ -843,35 +843,35 @@ useEffect(() => {
                               value={userTeam?.name || ''}
                               placeholder="Team name"
                               onBlur={async (e) => {
-                                const newName = e.target.value.trim();
-                                if (!newName) return;
-                                try {
-                                  if (userTeam) {
-                                    await rFetch('PATCH', `teams?id=eq.${userTeam.id}`, { name: newName }, { Prefer: 'return=minimal' });
-                                    showMsg(`✅ Team name updated to "${newName}"`, 'success');
-                                    loadAll();
-                                  } else {
-                                    await rFetch('POST', 'teams', {
-                                      user_id: u.id,
-                                      name: newName,
-                                      league_id: null,
-                                      total_points: 0,
-                                      wins: 0,
-                                      draws: 0,
-                                      losses: 0,
-                                      matches_played: 0,
-                                      goals_for: 0,
-                                      goals_against: 0,
-                                      goal_difference: 0,
-                                      is_active: true
-                                    }, { Prefer: 'return=minimal' });
-                                    showMsg(`✅ Team "${newName}" created for ${u.username}`, 'success');
-                                    loadAll();
-                                  }
-                                } catch (err) {
-                                  showMsg('❌ Error updating team: ' + err.message, 'danger');
-                                }
-                              }}
+  const newName = e.target.value.trim();
+  if (!newName) return;
+  try {
+    if (userTeam) {
+      await rFetch('PATCH', `teams?id=eq.${userTeam.id}`, { name: newName }, { Prefer: 'return=minimal' });
+      showMsg(`✅ Team name updated to "${newName}"`, 'success');
+      loadAll();
+    } else {
+      await rFetch('POST', 'teams', {
+        user_id: u.id,  // ← MAKE SURE THIS IS HERE
+        name: newName,
+        league_id: null,
+        total_points: 0,
+        wins: 0,
+        draws: 0,
+        losses: 0,
+        matches_played: 0,
+        goals_for: 0,
+        goals_against: 0,
+        goal_difference: 0,
+        is_active: true
+      }, { Prefer: 'return=minimal' });
+      showMsg(`✅ Team "${newName}" created for ${u.username}`, 'success');
+      loadAll();
+    }
+  } catch (err) {
+    showMsg('❌ Error updating team: ' + err.message, 'danger');
+  }
+}}
                               onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
                             />
                           </td>
@@ -893,38 +893,34 @@ useEffect(() => {
                               style={{ padding: '4px 8px', fontSize: '.78rem', minHeight: 'auto', width: '100%', maxWidth: '140px' }}
                               value={userTeam?.league_id || ''}
                               onChange={async (e) => {
-                                const leagueId = e.target.value || null;
-                                try {
-                                  if (userTeam) {
-                                    await rFetch('PATCH', `teams?id=eq.${userTeam.id}`, { league_id: leagueId }, { Prefer: 'return=minimal' });
-                                    showMsg(`✅ League updated for ${u.username}`, 'success');
-                                  } else if (leagueId) {
-                                    const teamName = u.username || 'Unknown';
-                                    const result = await rFetch('POST', 'teams', {
-                                      user_id: u.id,
-                                      name: teamName,
-                                      league_id: leagueId,
-                                      total_points: 0,
-                                      wins: 0,
-                                      draws: 0,
-                                      losses: 0,
-                                      matches_played: 0,
-                                      goals_for: 0,
-                                      goals_against: 0,
-                                      goal_difference: 0,
-                                      is_active: true
-                                    }, { Prefer: 'return=representation' });
-                                    if (result.ok) {
-                                      showMsg(`✅ Team "${teamName}" created and assigned to league`, 'success');
-                                    } else {
-                                      showMsg('❌ Failed to create team', 'danger');
-                                    }
-                                  }
-                                  loadAll();
-                                } catch (err) {
-                                  showMsg('❌ Error: ' + err.message, 'danger');
-                                }
-                              }}
+  const leagueId = e.target.value || null;
+  try {
+    if (userTeam) {
+      await rFetch('PATCH', `teams?id=eq.${userTeam.id}`, { league_id: leagueId }, { Prefer: 'return=minimal' });
+      showMsg(`✅ League updated for ${u.username}`, 'success');
+    } else if (leagueId) {
+      const teamName = u.username || 'Unknown';
+      const result = await rFetch('POST', 'teams', {
+        user_id: u.id,  // ← MAKE SURE THIS IS HERE
+        name: teamName,
+        league_id: leagueId,
+        total_points: 0,
+        wins: 0,
+        draws: 0,
+        losses: 0,
+        matches_played: 0,
+        goals_for: 0,
+        goals_against: 0,
+        goal_difference: 0,
+        is_active: true
+      }, { Prefer: 'return=representation' });
+      // ...
+    }
+    loadAll();
+  } catch (err) {
+    showMsg('❌ Error: ' + err.message, 'danger');
+  }
+}}
                             >
                               <option value="">-- No League --</option>
                               {leagues.map(l => (
