@@ -16,6 +16,7 @@ const SECTIONS = [
 ];
 
 export default function AdminPage({ user, profile }) {
+  // ========== ALL useState DECLARATIONS ==========
   const [section, setSection] = useState('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [msg, setMsg] = useState('');
@@ -54,6 +55,61 @@ export default function AdminPage({ user, profile }) {
   const [ppChange, setPpChange] = useState(0);
   const [ppReason, setPpReason] = useState('');
   const [ppSearch, setPpSearch] = useState('');
+  // Add after your other useState declarations
+const [seasonFilter, setSeasonFilter] = useState('');
+const uniqueSeasons = [...new Set(leagues.map(l => l.season).filter(Boolean))];
+
+  // ========== PASTE THE CODE HERE ==========
+  // Add this helper near the top of your component
+  const REAL_LEAGUE_SLOTS = {
+    'English Premier League': 20,
+    'La Liga': 20,
+    'Serie A': 20,
+    'Bundesliga': 18,
+    'Ligue 1': 18,
+    'Eredivisie': 18,
+    'Primeira Liga': 18,
+    'Scottish Premiership': 12,
+    'MLS': 29,
+    'Liga MX': 18,
+    'Argentine Primera División': 28,
+    'Brazilian Série A': 20,
+    'J1 League': 18,
+    'K League 1': 12,
+    'Saudi Pro League': 16,
+    'UAE Pro League': 14,
+    'Qatar Stars League': 12,
+    'A-League Men': 12,
+    'Chinese Super League': 16,
+    'Russian Premier League': 16,
+    'Turkish Süper Lig': 20,
+    'Belgian Pro League': 16,
+    'Swiss Super League': 12,
+    'Austrian Bundesliga': 12,
+    'Greek Super League': 14,
+    'Danish Superliga': 12,
+    'Norwegian Eliteserien': 16,
+    'Swedish Allsvenskan': 16,
+    'Finnish Veikkausliiga': 12,
+    'Irish Premier Division': 10,
+    'Welsh Premier League': 12,
+    'Northern Irish Premiership': 12,
+  };
+
+  // Update the input to auto-fill slots when league name is entered
+  function handleLeagueNameChange(name) {
+    setNlName(name);
+    // Auto-fill slots if the league name matches a known league
+    const slots = REAL_LEAGUE_SLOTS[name];
+    if (slots) {
+      setNlSlots(slots);
+    }
+  }
+  // ========== END OF PASTED CODE ==========
+
+  // ========== CLEAN CONSOLE LOGGING ==========
+  const logger = {
+    // ... rest of your code continues here
 
   // ========== CLEAN CONSOLE LOGGING ==========
   const logger = {
@@ -260,35 +316,38 @@ export default function AdminPage({ user, profile }) {
   }
 
   // ========== LEAGUE FUNCTIONS ==========
-  async function createNewLeague() {
-    if (!nlName || !nlCountry) { 
-      showMsg('Please fill in all league fields', 'danger'); 
-      return; 
-    }
-    
-    const r = await rFetch('POST', 'leagues', {
-      name: nlName,
-      country: nlCountry,
-      tier: parseInt(nlTier) || 1,
-      slots: parseInt(nlSlots) || 16,
-      season: nlSeason || '2024-25'
-    });
-    
-    if (r.ok) {
-      showMsg('🏟️ New League created successfully!');
-      setNlName('');
-      setNlCountry('');
-      setNlTier(1);
-      setNlSlots(16);
-      setNlSeason('2024-25');
-      loadAll();
-      logAction('create_league', { name: nlName, country: nlCountry });
-      logger.success('League created', { name: nlName, country: nlCountry });
-    } else {
-      showMsg('Failed to create league: ' + (r.data?.message || 'Unknown error'), 'danger');
-      logger.error('Failed to create league', r.data);
-    }
+async function createNewLeague() {
+  if (!nlName || !nlCountry) { 
+    showMsg('Please fill in all league fields', 'danger'); 
+    return; 
   }
+  
+  // Get real slot count if available, otherwise use the input value
+  const slotCount = REAL_LEAGUE_SLOTS[nlName] || parseInt(nlSlots) || 16;
+  
+  const r = await rFetch('POST', 'leagues', {
+    name: nlName,
+    country: nlCountry,
+    tier: parseInt(nlTier) || 1,
+    slots: slotCount,
+    season: nlSeason || '2024-25'  // Now this will work!
+  });
+  
+  if (r.ok) {
+    showMsg(`🏟️ ${nlName} created successfully with ${slotCount} slots!`);
+    setNlName('');
+    setNlCountry('');
+    setNlTier(1);
+    setNlSlots(16);
+    setNlSeason('2024-25');
+    loadAll();
+    logAction('create_league', { name: nlName, country: nlCountry, slots: slotCount, season: nlSeason });
+    logger.success('League created', { name: nlName, country: nlCountry, slots: slotCount, season: nlSeason });
+  } else {
+    showMsg('Failed to create league: ' + (r.data?.message || 'Unknown error'), 'danger');
+    logger.error('Failed to create league', r.data);
+  }
+}
 
   // ========== EUROPEAN COMPETITION FUNCTIONS ==========
   async function createEuropeanCompetition() {
@@ -900,50 +959,96 @@ export default function AdminPage({ user, profile }) {
           )}
 
           {/* LEAGUES */}
-          {section === 'leagues' && (
-            <div className="card">
-              <div style={{ fontWeight: 700, marginBottom: '1rem', fontSize: '1.1rem' }}>🏟️ League Management</div>
-              
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.5rem', marginBottom: '1rem' }}>
-                <input className="form-input" placeholder="League Name" value={nlName} onChange={e => setNlName(e.target.value)} />
-                <input className="form-input" placeholder="Country" value={nlCountry} onChange={e => setNlCountry(e.target.value)} />
-                <input className="form-input" type="number" placeholder="Tier" value={nlTier} onChange={e => setNlTier(parseInt(e.target.value) || 1)} />
-                <input className="form-input" type="number" placeholder="Slots" value={nlSlots} onChange={e => setNlSlots(parseInt(e.target.value) || 16)} />
-                <input className="form-input" placeholder="Season" value={nlSeason} onChange={e => setNlSeason(e.target.value)} />
-              </div>
-              <button className="btn btn-primary" onClick={createNewLeague} style={{ marginBottom: '1rem' }}>➕ Create League</button>
+{section === 'leagues' && (
+  <div className="card">
+    <div style={{ fontWeight: 700, marginBottom: '1rem', fontSize: '1.1rem' }}>🏟️ League Management</div>
+    
+    {/* ========== STEP 6: SEASON FILTER ========== */}
+    {/* Add this right after the title, before the create form */}
+    <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', alignItems: 'center' }}>
+      <label style={{ fontSize: '0.9rem', fontWeight: 600 }}>Filter by Season:</label>
+      <select 
+        className="form-select" 
+        value={seasonFilter} 
+        onChange={e => setSeasonFilter(e.target.value)}
+        style={{ minWidth: '150px' }}
+      >
+        <option value="">All Seasons</option>
+        {uniqueSeasons.map(s => (
+          <option key={s} value={s}>{s}</option>
+        ))}
+      </select>
+    </div>
+    {/* ========== END OF STEP 6 ========== */}
 
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Name</th>
-                      <th>Country</th>
-                      <th>Tier</th>
-                      <th>Slots</th>
-                      <th>Season</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {leagues.length === 0 ? (
-                      <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--muted)', padding: '2rem' }}>No leagues configured</td></tr>
-                    ) : (
-                      leagues.map(l => (
-                        <tr key={l.id}>
-                          <td style={{ fontWeight: 600 }}>{l.name}</td>
-                          <td>{l.country}</td>
-                          <td>{l.tier}</td>
-                          <td style={{ color: 'var(--blue)', fontWeight: 'bold' }}>{l.slots || 16}</td>
-                          <td>{l.season || '—'}</td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+    {/* Create League Form */}
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.5rem', marginBottom: '1rem' }}>
+      <input 
+        className="form-input" 
+        placeholder="League Name" 
+        value={nlName} 
+        onChange={e => handleLeagueNameChange(e.target.value)} 
+      />
+      <input 
+        className="form-input" 
+        placeholder="Country" 
+        value={nlCountry} 
+        onChange={e => setNlCountry(e.target.value)} 
+      />
+      <input 
+        className="form-input" 
+        type="number" 
+        placeholder="Tier" 
+        value={nlTier} 
+        onChange={e => setNlTier(parseInt(e.target.value) || 1)} 
+      />
+      <input 
+        className="form-input" 
+        type="number" 
+        placeholder="Slots" 
+        value={nlSlots} 
+        onChange={e => setNlSlots(parseInt(e.target.value) || 16)} 
+      />
+      <input 
+        className="form-input" 
+        placeholder="Season (e.g. 2024-25)" 
+        value={nlSeason} 
+        onChange={e => setNlSeason(e.target.value)} 
+      />
+    </div>
+    <button className="btn btn-primary" onClick={createNewLeague} style={{ marginBottom: '1rem' }}>➕ Create League</button>
+
+    {/* League Table */}
+    <div className="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Country</th>
+            <th>Tier</th>
+            <th>Slots</th>
+            <th>Season</th>
+          </tr>
+        </thead>
+        <tbody>
+          {filteredLeagues.length === 0 ? (
+            <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--muted)', padding: '2rem' }}>No leagues configured</td></tr>
+          ) : (
+            filteredLeagues.map(l => (
+              <tr key={l.id}>
+                <td style={{ fontWeight: 600 }}>{l.name}</td>
+                <td>{l.country}</td>
+                <td>{l.tier}</td>
+                <td style={{ color: 'var(--blue)', fontWeight: 'bold' }}>{l.slots || 16}</td>
+                <td>{l.season || '—'}</td>
+              </tr>
+            ))
           )}
-
+        </tbody>
+      </table>
+    </div>
+  </div>
+)}
           {/* FIXTURES */}
           {section === 'fixtures' && (
             <div className="card">
