@@ -47,11 +47,52 @@ export default function LeaguesPage() {
           <div className="card" style={{ padding: '.75rem' }}>
             {tier1.length > 0 && <>
               <div style={{ fontSize: '.72rem', color: 'var(--muted)', padding: '4px 8px', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 4 }}>Division 1</div>
-              {tier1.map(l => <div key={l.id} onClick={() => setSelected(l)} style={{ padding: '8px 12px', borderRadius: 8, cursor: 'pointer', background: selected?.id === l.id ? 'rgba(255,210,0,0.1)' : 'transparent', color: selected?.id === l.id ? 'var(--yellow)' : 'var(--text)', marginBottom: 2, fontSize: '.85rem' }}>{l.country} – {l.name}</div>)}
+              {tier1.map(l => {
+                // Count teams in this league
+                const teamCount = standings.filter(t => t.league_id === l.id).length;
+                const maxSlots = l.max_slots || 16;
+                return (
+                  <div key={l.id} onClick={() => setSelected(l)} style={{ 
+                    padding: '8px 12px', 
+                    borderRadius: 8, 
+                    cursor: 'pointer', 
+                    background: selected?.id === l.id ? 'rgba(255,210,0,0.1)' : 'transparent', 
+                    color: selected?.id === l.id ? 'var(--yellow)' : 'var(--text)', 
+                    marginBottom: 2, 
+                    fontSize: '.85rem',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
+                  }}>
+                    <span>{l.country} – {l.name}</span>
+                    <span style={{ fontSize: '.7rem', color: 'var(--muted)' }}>{teamCount}/{maxSlots}</span>
+                  </div>
+                );
+              })}
             </>}
             {tier2.length > 0 && <>
               <div style={{ fontSize: '.72rem', color: 'var(--muted)', padding: '4px 8px', textTransform: 'uppercase', letterSpacing: '.05em', margin: '8px 0 4px' }}>Division 2</div>
-              {tier2.map(l => <div key={l.id} onClick={() => setSelected(l)} style={{ padding: '8px 12px', borderRadius: 8, cursor: 'pointer', background: selected?.id === l.id ? 'rgba(255,210,0,0.1)' : 'transparent', color: selected?.id === l.id ? 'var(--yellow)' : 'var(--text)', marginBottom: 2, fontSize: '.85rem' }}>▼ {l.country} – {l.name}</div>)}
+              {tier2.map(l => {
+                const teamCount = standings.filter(t => t.league_id === l.id).length;
+                const maxSlots = l.max_slots || 16;
+                return (
+                  <div key={l.id} onClick={() => setSelected(l)} style={{ 
+                    padding: '8px 12px', 
+                    borderRadius: 8, 
+                    cursor: 'pointer', 
+                    background: selected?.id === l.id ? 'rgba(255,210,0,0.1)' : 'transparent', 
+                    color: selected?.id === l.id ? 'var(--yellow)' : 'var(--text)', 
+                    marginBottom: 2, 
+                    fontSize: '.85rem',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
+                  }}>
+                    <span>▼ {l.country} – {l.name}</span>
+                    <span style={{ fontSize: '.7rem', color: 'var(--muted)' }}>{teamCount}/{maxSlots}</span>
+                  </div>
+                );
+              })}
             </>}
           </div>
         </div>
@@ -61,10 +102,15 @@ export default function LeaguesPage() {
           {selected ? <>
             <div className="card" style={{ marginBottom: '1rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h3 style={{ fontWeight: 700, fontSize: '1.1rem' }}>{selected.country} {selected.name}</h3>
+                <h3 style={{ fontWeight: 700, fontSize: '1.1rem' }}>
+                  {selected.country} {selected.name}
+                </h3>
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <span className="badge badge-yellow">Season {selected.current_season}</span>
+                  <span className="badge badge-yellow">Season {selected.current_season || selected.season || '2024-25'}</span>
                   <span className="badge badge-gray">Tier {selected.tier}</span>
+                  <span className="badge badge-blue">
+                    {standings.length} / {selected.max_slots || 16} Teams
+                  </span>
                 </div>
               </div>
             </div>
