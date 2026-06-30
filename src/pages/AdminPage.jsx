@@ -1326,13 +1326,41 @@ export default function AdminPage({ user, profile }) {
           ))
         }
       </select>
-      <input 
-        className="form-input" 
-        type="number" 
-        placeholder="Points Change (e.g. +3 or -2)" 
-        value={adjPts} 
-        onChange={e => setAdjPts(parseInt(e.target.value) || 0)} 
-      />
+      
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          {/* Quick deduction buttons */}
+          <button className="btn btn-danger btn-sm" onClick={() => setAdjPts(prev => prev - 1)} style={{ flex: 1 }}>-1</button>
+          <button className="btn btn-danger btn-sm" onClick={() => setAdjPts(prev => prev - 3)} style={{ flex: 1 }}>-3</button>
+          <button className="btn btn-danger btn-sm" onClick={() => setAdjPts(prev => prev - 5)} style={{ flex: 1 }}>-5</button>
+          <button className="btn btn-danger btn-sm" onClick={() => setAdjPts(prev => prev - 10)} style={{ flex: 1 }}>-10</button>
+        </div>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          <input 
+            className="form-input" 
+            type="number" 
+            placeholder="+3 or -2" 
+            value={adjPts === 0 ? '' : adjPts}
+            onChange={e => setAdjPts(e.target.value === '' ? 0 : parseInt(e.target.value) || 0)} 
+            style={{ flex: 1 }}
+          />
+          <button 
+            className="btn btn-secondary btn-sm" 
+            onClick={() => { setAdjPts(0); setAdjReason(''); }}
+            title="Clear"
+          >
+            ✕
+          </button>
+        </div>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          {/* Quick addition buttons */}
+          <button className="btn btn-success btn-sm" onClick={() => setAdjPts(prev => prev + 1)} style={{ flex: 1 }}>+1</button>
+          <button className="btn btn-success btn-sm" onClick={() => setAdjPts(prev => prev + 3)} style={{ flex: 1 }}>+3</button>
+          <button className="btn btn-success btn-sm" onClick={() => setAdjPts(prev => prev + 5)} style={{ flex: 1 }}>+5</button>
+          <button className="btn btn-success btn-sm" onClick={() => setAdjPts(prev => prev + 10)} style={{ flex: 1 }}>+10</button>
+        </div>
+      </div>
+      
       <input 
         className="form-input" 
         placeholder="Reason (e.g. Deduction for violation)" 
@@ -1358,7 +1386,6 @@ export default function AdminPage({ user, profile }) {
     <button className="btn btn-primary" onClick={adjustTeamPoints}>✏️ Apply Points Adjustment</button>
   </div>
 )}
-
           {/* RELEGATION */}
           {section === 'relegation' && (
             <div className="card">
