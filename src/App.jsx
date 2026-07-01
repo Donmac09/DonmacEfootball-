@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Navbar from './components/Navbar';
 import AuthPage from './pages/AuthPage';
@@ -39,6 +39,20 @@ function LoadingScreen() {
 function Shell() {
   const { user, profile, loading, refreshProfile } = useAuth();
   const [page, setPage] = useState('home');
+
+  // ====== LOCAL STORAGE PERSISTENCE ======
+  // Load saved page on mount
+  useEffect(() => {
+    const savedPage = localStorage.getItem('currentPage');
+    if (savedPage) {
+      setPage(savedPage);
+    }
+  }, []);
+
+  // Save page when it changes
+  useEffect(() => {
+    localStorage.setItem('currentPage', page);
+  }, [page]);
 
   if (loading) return <LoadingScreen />;
 
