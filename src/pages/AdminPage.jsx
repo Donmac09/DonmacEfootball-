@@ -34,6 +34,7 @@ export default function AdminPage({ user, profile }) {
   const [userSearch, setUserSearch] = useState('');
   const [fixtureList, setFixtureList] = useState([]);
   const [adjTeamSearch, setAdjTeamSearch] = useState('');
+  const [seasonFilter, setSeasonFilter] = useState('');
   const [scheduleStartDate, setScheduleStartDate] = useState('');
   const [scheduleTime, setScheduleTime] = useState('22:00');
 
@@ -1166,7 +1167,7 @@ export default function AdminPage({ user, profile }) {
       <input 
         type="date" 
         className="form-input" 
-        value={scheduleStartDate || ''}
+        value={scheduleStartDate}
         onChange={e => setScheduleStartDate(e.target.value)}
         style={{ width: '180px', padding: '6px 10px' }}
       />
@@ -1174,7 +1175,7 @@ export default function AdminPage({ user, profile }) {
       <input 
         type="time" 
         className="form-input" 
-        value={scheduleTime || '22:00'}
+        value={scheduleTime}
         onChange={e => setScheduleTime(e.target.value)}
         style={{ width: '120px', padding: '6px 10px' }}
       />
@@ -1202,7 +1203,8 @@ export default function AdminPage({ user, profile }) {
             }
             
             // Schedule each fixture using the selected start date
-            let startDate = new Date(`${scheduleStartDate}T${scheduleTime || '19:00'}:00`);
+            const time = scheduleTime || '22:00';
+            const startDate = new Date(`${scheduleStartDate}T${time}:00`);
             
             if (isNaN(startDate.getTime())) {
               showMsg('Invalid date/time', 'danger');
@@ -1229,7 +1231,7 @@ export default function AdminPage({ user, profile }) {
               }
             }
             
-            showMsg(`✅ Scheduled ${scheduled} fixtures from ${scheduleStartDate}${failed > 0 ? `, ${failed} failed` : ''}`);
+            showMsg(`✅ Scheduled ${scheduled} fixtures from ${scheduleStartDate} at ${time}${failed > 0 ? `, ${failed} failed` : ''}`);
             
             // Refresh fixture list
             const refresh = await apiFetch('GET', `fixtures?league_id=eq.${genLeague}&select=*,home:home_team_id(name),away:away_team_id(name)&order=round`);
