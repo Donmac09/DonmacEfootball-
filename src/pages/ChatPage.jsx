@@ -9,15 +9,15 @@ export default function ChatPage({ user }) {
   const [allUsers, setAllUsers] = useState([]);
   const [search, setSearch]     = useState('');
   const [text, setText]         = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [isSearching, setIsSearching] = useState(false);
   const endRef = useRef(null);
   const tok = () => sessionStore.session?.access_token ?? SUPABASE_KEY;
 
   // ====== LOCAL STORAGE PERSISTENCE ======
-  // Load saved selected contact on mount
   useEffect(() => {
     const savedContactId = localStorage.getItem('selectedChatContact');
     if (savedContactId) {
-      // Find the contact and select them
       const contact = contacts.find(c => c.id === savedContactId);
       if (contact) {
         selectContact(contact);
@@ -25,7 +25,6 @@ export default function ChatPage({ user }) {
     }
   }, [contacts]);
 
-  // Save selected contact when it changes
   useEffect(() => {
     if (selected) {
       localStorage.setItem('selectedChatContact', selected.id);
@@ -36,8 +35,8 @@ export default function ChatPage({ user }) {
   useEffect(() => {
     if (!user) return;
     loadContacts();
+    loadAllUsers();
 
-    // Subscribe to new messages
     const subscription = sb
       .channel('chat-messages')
       .on(
@@ -49,23 +48,16 @@ export default function ChatPage({ user }) {
           filter: `receiver_id=eq.${user.id}`,
         },
         (payload) => {
-          // New message received - update UI
           const newMsg = payload.new;
-          
-          // If the message is from the selected contact, add to messages
           if (selected && newMsg.sender_id === selected.id) {
             setMessages(prev => [...prev, newMsg]);
-            // Mark as read immediately
             markAsRead(newMsg.id);
           }
-          
-          // Update contacts list
           loadContacts();
         }
       )
       .subscribe();
 
-    // Also listen for messages sent by the user (to update other user's chat)
     const subscription2 = sb
       .channel('chat-messages-sent')
       .on(
@@ -76,8 +68,7 @@ export default function ChatPage({ user }) {
           table: 'chat_messages',
           filter: `sender_id=eq.${user.id}`,
         },
-        (payload) => {
-          // Message sent - update contacts
+        () => {
           loadContacts();
         }
       )
@@ -89,37 +80,49 @@ export default function ChatPage({ user }) {
     };
   }, [user]);
 
-  // Auto-scroll to bottom on new messages
   useEffect(() => { 
     endRef.current?.scrollIntoView({ behavior: 'smooth' }); 
   }, [messages]);
 
-  // Listen for new messages from selected contact (polling fallback)
+  // ====== SEARCH USERS ======
   useEffect(() => {
-    if (!selected) return;
+    if (search.trim().length === 0) {
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
+    }
+
+    setIsSearching(true);
+    const searchTerm = search.toLowerCase().trim();
     
-    // Poll for new messages every 3 seconds as fallback
-    const interval = setInterval(() => {
-      if (selected) {
-        refreshMessages(selected.id);
-      }
-    }, 3000);
+    // Filter users who are not already in contacts and not the current user
+    const filtered = allUsers.filter(u => 
+      u.username?.toLowerCase().includes(searchTerm) &&
+      !contacts.find(c => c.id === u.id) &&
+      u.id !== user.id
+    );
     
-    return () => clearInterval(interval);
-  }, [selected]);
+    setSearchResults(filtered);
+  }, [search, allUsers, contacts, user.id]);
+
+  async function loadAllUsers() {
+    const r = await apiFetch('GET', `users?id=neq.${user.id}&select=id,username&is_blocked=eq.false`);
+    setAllUsers(Array.isArray(r.data) ? r.data : []);
+  }
 
   async function loadContacts() {
-    const r = await apiFetch('GET',`chat_messages?or=(sender_id.eq.${user.id},receiver_id.eq.${user.id})&select=*,sender:sender_id(id,username),receiver:receiver_id(id,username)&order=created_at.desc&limit=200`);
+    const r = await apiFetch('GET', `chat_messages?or=(sender_id.eq.${user.id},receiver_id.eq.${user.id})&select=*,sender:sender_id(id,username),receiver:receiver_id(id,username)&order=created_at.desc&limit=200`);
     const data = Array.isArray(r.data) ? r.data : [];
-    const seen = new Set(), contacts = [];
+    const seen = new Set();
+    const contactsList = [];
     data.forEach(m => {
-      const other = m.sender_id===user.id ? m.receiver : m.sender;
+      const other = m.sender_id === user.id ? m.receiver : m.sender;
       if (other && !seen.has(other.id)) { 
         seen.add(other.id); 
-        contacts.push({ ...other, lastMsg: m.message, lastMsgTime: m.created_at }); 
+        contactsList.push({ ...other, lastMsg: m.message, lastMsgTime: m.created_at }); 
       }
     });
-    setContacts(contacts);
+    setContacts(contactsList);
   }
 
   async function markAsRead(messageId) {
@@ -136,7 +139,7 @@ export default function ChatPage({ user }) {
   }
 
   async function refreshMessages(contactId) {
-    const r = await apiFetch('GET',`chat_messages?or=(and(sender_id.eq.${user.id},receiver_id.eq.${contactId}),and(sender_id.eq.${contactId},receiver_id.eq.${user.id}))&select=*&order=created_at`);
+    const r = await apiFetch('GET', `chat_messages?or=(and(sender_id.eq.${user.id},receiver_id.eq.${contactId}),and(sender_id.eq.${contactId},receiver_id.eq.${user.id}))&select=*&order=created_at`);
     const newMessages = Array.isArray(r.data) ? r.data : [];
     if (newMessages.length !== messages.length) {
       setMessages(newMessages);
@@ -145,10 +148,11 @@ export default function ChatPage({ user }) {
 
   async function selectContact(c) {
     setSelected(c);
-    const r = await apiFetch('GET',`chat_messages?or=(and(sender_id.eq.${user.id},receiver_id.eq.${c.id}),and(sender_id.eq.${c.id},receiver_id.eq.${user.id}))&select=*&order=created_at`);
+    setSearch('');
+    setSearchResults([]);
+    const r = await apiFetch('GET', `chat_messages?or=(and(sender_id.eq.${user.id},receiver_id.eq.${c.id}),and(sender_id.eq.${c.id},receiver_id.eq.${user.id}))&select=*&order=created_at`);
     setMessages(Array.isArray(r.data) ? r.data : []);
     
-    // Mark all messages from this contact as read
     await fetch(`${SUPABASE_URL}/rest/v1/chat_messages?receiver_id=eq.${user.id}&sender_id=eq.${c.id}&read=eq.false`, {
       method: 'PATCH',
       headers: {
@@ -172,35 +176,27 @@ export default function ChatPage({ user }) {
       created_at: new Date().toISOString()
     };
     
-    // Optimistically add to UI
     setMessages(prev => [...prev, newMsg]);
     setText('');
     
-    // Send to server
     const result = await apiFetch('POST', 'chat_messages', newMsg);
     
     if (result.ok) {
-      // Update contacts with new message
       loadContacts();
     } else {
-      // Rollback if failed
       setMessages(prev => prev.filter(m => m !== newMsg));
     }
   }
 
   async function startChat(u) {
     setSearch('');
-    if (!contacts.find(c=>c.id===u.id)) {
+    setSearchResults([]);
+    if (!contacts.find(c => c.id === u.id)) {
       setContacts(prev => [{ ...u, lastMsg: '', lastMsgTime: null }, ...prev]);
     }
     await selectContact(u);
     localStorage.setItem('selectedChatContact', u.id);
   }
-
-  const filtered = allUsers.filter(u => 
-    u.username?.toLowerCase().includes(search.toLowerCase()) && 
-    !contacts.find(c=>c.id===u.id)
-  );
 
   // Get unread count for a contact
   const getUnreadCount = (contactId) => {
@@ -213,68 +209,133 @@ export default function ChatPage({ user }) {
       <div className="chat-layout">
         {/* Sidebar */}
         <div className="chat-sidebar">
-          <div style={{ padding:'.75rem' }}>
-            <input className="form-input" placeholder="Start new chat..." value={search} onChange={e=>setSearch(e.target.value)} style={{ marginBottom:4 }} />
-            {search && filtered.slice(0,5).map(u=>(
-              <div key={u.id} className="chat-item" onClick={()=>startChat(u)}>
-                <div style={{ fontWeight:600, fontSize:'.875rem' }}>{u.username}</div>
-                <div className="text-xs text-muted">Click to message</div>
-              </div>
-            ))}
-          </div>
-          {contacts.map(c=>{
-            const unread = getUnreadCount(c.id);
-            return (
-              <div key={c.id} className={`chat-item ${selected?.id===c.id?'active':''}`} onClick={()=>selectContact(c)}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ fontWeight:600, fontSize:'.875rem' }}>{c.username}</div>
-                  {unread > 0 && <span className="badge badge-red" style={{ fontSize: '0.6rem' }}>{unread}</span>}
+          <div style={{ padding: '.75rem' }}>
+            <input 
+              className="form-input" 
+              placeholder="🔍 Search users by name..." 
+              value={search} 
+              onChange={e => setSearch(e.target.value)} 
+              style={{ marginBottom: 4 }} 
+            />
+            
+            {/* Search Results */}
+            {isSearching && searchResults.length > 0 && (
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontSize: '0.7rem', color: 'var(--muted)', padding: '4px 0' }}>
+                  Search results ({searchResults.length})
                 </div>
-                <div className="text-xs text-muted" style={{ overflow:'hidden', whiteSpace:'nowrap', textOverflow:'ellipsis', marginTop:2 }}>
-                  {c.lastMsg || 'No messages'}
-                </div>
-                {c.lastMsgTime && (
-                  <div className="text-xs text-muted" style={{ fontSize: '0.6rem', marginTop: 1 }}>
-                    {new Date(c.lastMsgTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                {searchResults.slice(0, 5).map(u => (
+                  <div 
+                    key={u.id} 
+                    className="chat-item" 
+                    onClick={() => startChat(u)}
+                    style={{ 
+                      padding: '8px 12px',
+                      borderRadius: 6,
+                      cursor: 'pointer',
+                      background: 'rgba(255,210,0,0.05)',
+                      marginBottom: 2
+                    }}
+                  >
+                    <div style={{ fontWeight: 600, fontSize: '.875rem' }}>{u.username}</div>
+                    <div className="text-xs text-muted">Click to start chat</div>
                   </div>
-                )}
+                ))}
               </div>
-            );
-          })}
+            )}
+
+            {isSearching && searchResults.length === 0 && search.trim().length > 0 && (
+              <div style={{ fontSize: '0.8rem', color: 'var(--muted)', padding: '8px 0' }}>
+                No users found
+              </div>
+            )}
+          </div>
+
+          {/* Contacts List */}
+          <div style={{ padding: '0 .75rem .75rem .75rem' }}>
+            <div style={{ fontSize: '0.7rem', color: 'var(--muted)', padding: '4px 0 8px 0', borderBottom: '1px solid var(--border)' }}>
+              Your conversations ({contacts.length})
+            </div>
+            {contacts.length === 0 ? (
+              <div style={{ padding: '16px 0', textAlign: 'center', color: 'var(--muted)', fontSize: '0.8rem' }}>
+                No conversations yet. Search for users above to start chatting!
+              </div>
+            ) : (
+              contacts.map(c => {
+                const unread = getUnreadCount(c.id);
+                return (
+                  <div 
+                    key={c.id} 
+                    className={`chat-item ${selected?.id === c.id ? 'active' : ''}`} 
+                    onClick={() => selectContact(c)}
+                    style={{
+                      padding: '8px 10px',
+                      borderRadius: 6,
+                      cursor: 'pointer',
+                      background: selected?.id === c.id ? 'rgba(255,210,0,0.08)' : 'transparent',
+                      marginBottom: 2
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ fontWeight: 600, fontSize: '.875rem' }}>{c.username}</div>
+                      {unread > 0 && <span className="badge badge-red" style={{ fontSize: '0.6rem' }}>{unread}</span>}
+                    </div>
+                    <div className="text-xs text-muted" style={{ overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', marginTop: 2 }}>
+                      {c.lastMsg || 'No messages'}
+                    </div>
+                    {c.lastMsgTime && (
+                      <div className="text-xs text-muted" style={{ fontSize: '0.6rem', marginTop: 1 }}>
+                        {new Date(c.lastMsgTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
         </div>
 
         {/* Main */}
         <div className="chat-main">
-          {selected ? <>
-            <div style={{ padding:'.75rem 1rem', borderBottom:'1px solid var(--border)', fontWeight:600 }}>
-              {selected.username}
-              <span style={{ fontSize: '0.7rem', color: 'var(--muted)', marginLeft: 8, fontWeight: 400 }}>
-                {selected.role === 'admin' ? '👑 Admin' : '🎮 Player'}
-              </span>
-            </div>
-            <div className="messages">
-              {messages.map((m, i) => (
-                <div key={m.id || i} className={`msg ${m.sender_id===user.id ? 'msg-out' : 'msg-in'}`}>
-                  {m.message}
-                  <div style={{ fontSize: '0.6rem', color: 'var(--muted)', marginTop: 2 }}>
-                    {new Date(m.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+          {selected ? (
+            <>
+              <div style={{ padding: '.75rem 1rem', borderBottom: '1px solid var(--border)', fontWeight: 600 }}>
+                {selected.username}
+                <span style={{ fontSize: '0.7rem', color: 'var(--muted)', marginLeft: 8, fontWeight: 400 }}>
+                  {selected.role === 'admin' ? '👑 Admin' : '🎮 Player'}
+                </span>
+              </div>
+              <div className="messages">
+                {messages.map((m, i) => (
+                  <div key={m.id || i} className={`msg ${m.sender_id === user.id ? 'msg-out' : 'msg-in'}`}>
+                    {m.message}
+                    <div style={{ fontSize: '0.6rem', color: 'var(--muted)', marginTop: 2 }}>
+                      {new Date(m.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                    </div>
                   </div>
-                </div>
-              ))}
-              <div ref={endRef} />
+                ))}
+                <div ref={endRef} />
+              </div>
+              <div className="msg-input-row">
+                <input 
+                  className="form-input" 
+                  placeholder="Type a message..." 
+                  value={text} 
+                  onChange={e => setText(e.target.value)} 
+                  onKeyDown={e => e.key === 'Enter' && send()} 
+                  style={{ flex: 1 }} 
+                />
+                <button className="btn btn-primary" onClick={send}>→</button>
+              </div>
+            </>
+          ) : (
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)' }}>
+              {search.trim().length > 0 && searchResults.length > 0 
+                ? 'Click on a user to start chatting'
+                : 'Select a conversation or search for users'
+              }
             </div>
-            <div className="msg-input-row">
-              <input 
-                className="form-input" 
-                placeholder="Type a message..." 
-                value={text} 
-                onChange={e=>setText(e.target.value)} 
-                onKeyDown={e=>e.key==='Enter'&&send()} 
-                style={{ flex:1 }} 
-              />
-              <button className="btn btn-primary" onClick={send}>→</button>
-            </div>
-          </> : <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', color:'var(--muted)' }}>Select a conversation</div>}
+          )}
         </div>
       </div>
     </div>
