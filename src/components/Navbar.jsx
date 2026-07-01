@@ -201,9 +201,9 @@ export default function Navbar({ page, setPage }) {
       </nav>
 
       {/* ── ANNOUNCEMENT BANNER (BELOW HEADER - COMPACT) ──────────── */}
-      <div style={{ padding: '0 16px' }}>
-        <AnnouncementBanner />
-      </div>
+<div style={{ padding: '0 16px', width: '100%', boxSizing: 'border-box' }}>
+  <AnnouncementBanner />
+</div>
 
       {/* ── NOTIFICATIONS PANEL ───────────────────────────────────── */}
       {showNotifs && (
