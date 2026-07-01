@@ -201,15 +201,16 @@ export default function Navbar({ page, setPage }) {
       </nav>
 
       {/* ── ANNOUNCEMENT BANNER (BELOW HEADER) ────────────────────── */}
-      <div style={{ 
-        padding: '8px 16px', 
-        width: '100%', 
-        boxSizing: 'border-box',
-        position: 'relative',
-        zIndex: 50,
-      }}>
-        <AnnouncementBanner />
-      </div>
+<div style={{ 
+  padding: '8px 16px', 
+  width: '100%', 
+  boxSizing: 'border-box',
+  marginTop: '56px',  /* Add this - matches the header height */
+  position: 'relative',
+  zIndex: 50,
+}}>
+  <AnnouncementBanner />
+</div>
 
       {/* ── NOTIFICATIONS PANEL ───────────────────────────────────── */}
       {showNotifs && (
