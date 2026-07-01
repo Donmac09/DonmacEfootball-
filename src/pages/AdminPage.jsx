@@ -62,7 +62,6 @@ export default function AdminPage({ user, profile }) {
   const [ppChange, setPpChange] = useState(0);
   const [ppReason, setPpReason] = useState('');
   const [ppSearch, setPpSearch] = useState('');
-  const [seasonFilter, setSeasonFilter] = useState('');
 
   // Load saved section on page load
   useEffect(() => {
