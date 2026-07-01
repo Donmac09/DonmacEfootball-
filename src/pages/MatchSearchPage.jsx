@@ -4,6 +4,7 @@ import { apiFetch, SUPABASE_URL, SUPABASE_KEY, sb } from '../services/supabase';
 
 function Leaderboard() {
   const [rows, setRows] = useState([]);
+  
   useEffect(() => {
     apiFetch('GET','free_play_leaderboard?select=*,users!inner(username)&order=points.desc&limit=20').then(r => {
       const data = Array.isArray(r.data) ? r.data : [];
@@ -16,21 +17,42 @@ function Leaderboard() {
       setRows(deduped);
     });
   }, []);
+  
   return (
     <div className="table-wrap">
       <table>
-        <thead><tr>{['#','Player','W','D','L','Pts'].map(h=><th key={h}>{h}</th>)}</tr></thead>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Player</th>
+            <th>P</th>
+            <th>W</th>
+            <th>D</th>
+            <th>L</th>
+            <th>GF</th>
+            <th>GA</th>
+            <th>GD</th>
+            <th>Pts</th>
+          </tr>
+        </thead>
         <tbody>
-          {rows.length===0
-            ? <tr><td colSpan={6} style={{ textAlign:'center', color:'var(--muted)', padding:'2rem' }}>No data yet</td></tr>
-            : rows.map((r,i)=>(
+          {rows.length === 0
+            ? <tr><td colSpan={10} style={{ textAlign:'center', color:'var(--muted)', padding:'2rem' }}>No data yet</td></tr>
+            : rows.map((r, i) => (
               <tr key={`${r.user_id}-${i}`}>
                 <td className={`pos ${i===0?'pos-1':i===1?'pos-2':i===2?'pos-3':''}`}>{i+1}</td>
-                <td style={{ fontWeight:600 }}>{r.users?.username||'Unknown'}</td>
-                <td>{r.wins||0}</td><td>{r.draws||0}</td><td>{r.losses||0}</td>
-                <td className="pts">{r.points||0}</td>
+                <td style={{ fontWeight: 600 }}>{r.users?.username || 'Unknown'}</td>
+                <td>{r.matches_played || 0}</td>
+                <td style={{ color: 'var(--green)' }}>{r.wins || 0}</td>
+                <td style={{ color: 'var(--muted)' }}>{r.draws || 0}</td>
+                <td style={{ color: 'var(--red)' }}>{r.losses || 0}</td>
+                <td>{r.goals_for || 0}</td>
+                <td>{r.goals_against || 0}</td>
+                <td>{r.goal_difference || 0}</td>
+                <td className="pts">{r.points || 0}</td>
               </tr>
-            ))}
+            ))
+          }
         </tbody>
       </table>
     </div>
