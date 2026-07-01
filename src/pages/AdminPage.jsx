@@ -35,6 +35,10 @@ export default function AdminPage({ user, profile }) {
   const [fixtureList, setFixtureList] = useState([]);
   const [adjTeamSearch, setAdjTeamSearch] = useState('');
 
+  // Relegation/Promotion spots
+  const [relSpots, setRelSpots] = useState(3);
+  const [promoSpots, setPromoSpots] = useState(3);
+
   const [announcements, setAnnouncements] = useState([]);
   const [annMessage, setAnnMessage] = useState('');
   const [editingAnnId, setEditingAnnId] = useState(null);
@@ -58,17 +62,17 @@ export default function AdminPage({ user, profile }) {
   const [seasonFilter, setSeasonFilter] = useState('');
 
   // Load saved section on page load
-useEffect(() => {
-  const savedSection = localStorage.getItem('adminSection');
-  if (savedSection) {
-    setSection(savedSection);
-  }
-}, []);
+  useEffect(() => {
+    const savedSection = localStorage.getItem('adminSection');
+    if (savedSection) {
+      setSection(savedSection);
+    }
+  }, []);
 
-// Save section when it changes
-useEffect(() => {
-  localStorage.setItem('adminSection', section);
-}, [section]);
+  // Save section when it changes
+  useEffect(() => {
+    localStorage.setItem('adminSection', section);
+  }, [section]);
 
   const REAL_LEAGUE_SLOTS = {
     'English Premier League': { slots: 20, season: '2024-25' },
@@ -494,86 +498,154 @@ useEffect(() => {
   }
 
   async function generateFixtures() {
-  if (!genLeague) { 
-    showMsg('Select a league', 'danger'); 
-    return; 
-  }
-  
-  const r = await apiFetch('GET', `teams?league_id=eq.${genLeague}&is_active=eq.true&select=id`);
-  const ids = Array.isArray(r.data) ? r.data.map(t => t.id) : [];
-  
-  if (ids.length < 2) { 
-    showMsg('Need at least 2 teams', 'danger'); 
-    return; 
-  }
-  
-  const arr = [...ids];
-  if (arr.length % 2 !== 0) arr.push(null);
-  const n = arr.length, rounds = n - 1, fx = [];
-  const rot = [...arr];
-  
-  for (let rv = 0; rv < rounds; rv++) {
-    for (let i = 0; i < n / 2; i++) {
-      const h = rot[i], a = rot[n - 1 - i];
-      if (h && a) {
-        fx.push({ 
-          league_id: genLeague, 
-          home_team_id: h, 
-          away_team_id: a, 
-          round: rv + 1, 
-          status: 'pending' 
-        });
-      }
+    if (!genLeague) { 
+      showMsg('Select a league', 'danger'); 
+      return; 
     }
-    rot.splice(1, 0, rot.pop());
-  }
-  
-  const ret = fx.map(f => ({
-    league_id: f.league_id,
-    home_team_id: f.away_team_id,
-    away_team_id: f.home_team_id,
-    round: f.round + rounds,
-    status: 'pending',
-  }));
-  
-  const allFixtures = [...fx, ...ret];
-  const result = await rFetch('POST', 'fixtures', allFixtures, { Prefer: 'return=minimal' });
-  
-  if (result.ok) {
-    showMsg(`✅ Generated ${allFixtures.length} fixtures (${rounds} rounds × 2 legs)`);
-    await logAction('generate_fixtures', { league_id: genLeague, count: allFixtures.length });
-    loadAll();
     
-    // Refresh fixture list
-    const refresh = await apiFetch('GET', `fixtures?league_id=eq.${genLeague}&select=*,home:home_team_id(name),away:away_team_id(name)&order=round`);
-    setFixtureList(Array.isArray(refresh.data) ? refresh.data : []);
-  } else {
-    showMsg(`❌ Failed to generate fixtures: ${result.data?.message || 'Unknown error'}`, 'danger');
+    const r = await apiFetch('GET', `teams?league_id=eq.${genLeague}&is_active=eq.true&select=id`);
+    const ids = Array.isArray(r.data) ? r.data.map(t => t.id) : [];
+    
+    if (ids.length < 2) { 
+      showMsg('Need at least 2 teams', 'danger'); 
+      return; 
+    }
+    
+    const arr = [...ids];
+    if (arr.length % 2 !== 0) arr.push(null);
+    const n = arr.length, rounds = n - 1, fx = [];
+    const rot = [...arr];
+    
+    for (let rv = 0; rv < rounds; rv++) {
+      for (let i = 0; i < n / 2; i++) {
+        const h = rot[i], a = rot[n - 1 - i];
+        if (h && a) {
+          fx.push({ 
+            league_id: genLeague, 
+            home_team_id: h, 
+            away_team_id: a, 
+            round: rv + 1, 
+            status: 'pending' 
+          });
+        }
+      }
+      rot.splice(1, 0, rot.pop());
+    }
+    
+    const ret = fx.map(f => ({
+      league_id: f.league_id,
+      home_team_id: f.away_team_id,
+      away_team_id: f.home_team_id,
+      round: f.round + rounds,
+      status: 'pending',
+    }));
+    
+    const allFixtures = [...fx, ...ret];
+    const result = await rFetch('POST', 'fixtures', allFixtures, { Prefer: 'return=minimal' });
+    
+    if (result.ok) {
+      showMsg(`✅ Generated ${allFixtures.length} fixtures (${rounds} rounds × 2 legs)`);
+      await logAction('generate_fixtures', { league_id: genLeague, count: allFixtures.length });
+      loadAll();
+      
+      // Refresh fixture list
+      const refresh = await apiFetch('GET', `fixtures?league_id=eq.${genLeague}&select=*,home:home_team_id(name),away:away_team_id(name)&order=round`);
+      setFixtureList(Array.isArray(refresh.data) ? refresh.data : []);
+    } else {
+      showMsg(`❌ Failed to generate fixtures: ${result.data?.message || 'Unknown error'}`, 'danger');
+    }
   }
-}
+
   async function processRelegation() {
     if (!genLeague) { showMsg('Select a league', 'danger'); return; }
-    if (!window.confirm('Process relegation/promotion? This cannot be undone.')) return;
+    
     const lg = leagues.find(l => l.id === genLeague);
     if (!lg) return;
+    
+    // Find Division 2 league for this country
+    const t2r = await apiFetch('GET', `leagues?country=eq.${encodeURIComponent(lg.country)}&tier=eq.2&select=id,name&limit=1`);
+    const t2 = Array.isArray(t2r.data) && t2r.data[0] ? t2r.data[0] : null;
+    
+    if (!t2) { 
+      showMsg(`No Division 2 league found for ${lg.country}`, 'danger'); 
+      return; 
+    }
+    
+    // Get teams in current league sorted by points
     const r = await apiFetch('GET', `teams?league_id=eq.${genLeague}&select=*&order=total_points.desc`);
     const lt = Array.isArray(r.data) ? r.data : [];
-    const rel = lg.relegation_spots || 3, pro = lg.promotion_spots || 3;
-    const relegated = lt.slice(lt.length - rel);
-    const t2r = await apiFetch('GET', `leagues?country=eq.${encodeURIComponent(lg.country)}&tier=eq.2&select=id&limit=1`);
-    const t2 = Array.isArray(t2r.data) && t2r.data[0] ? t2r.data[0] : null;
-    const reset = { total_points: 0, wins: 0, draws: 0, losses: 0, goals_for: 0, goals_against: 0, goal_difference: 0, matches_played: 0 };
-    if (t2 && relegated.length > 0) {
-      for (const t of relegated)
-        await rFetch('PATCH', `teams?id=eq.${t.id}`, { league_id: t2.id, ...reset }, { Prefer: 'return=minimal' });
+    
+    if (lt.length < 2) { 
+      showMsg('Not enough teams in this league', 'danger'); 
+      return; 
     }
-    if (t2) {
-      const t2teams = await apiFetch('GET', `teams?league_id=eq.${t2.id}&select=*&order=total_points.desc&limit=${pro}`);
-      for (const t of (Array.isArray(t2teams.data) ? t2teams.data : []))
-        await rFetch('PATCH', `teams?id=eq.${t.id}`, { league_id: genLeague, ...reset }, { Prefer: 'return=minimal' });
+    
+    // Get Division 2 teams sorted by points
+    const t2TeamsR = await apiFetch('GET', `teams?league_id=eq.${t2.id}&select=*&order=total_points.desc`);
+    const t2Teams = Array.isArray(t2TeamsR.data) ? t2TeamsR.data : [];
+    
+    const relCount = parseInt(relSpots) || 3;
+    const promoCount = parseInt(promoSpots) || 3;
+    
+    // Relegated teams (bottom of Division 1)
+    const relegated = lt.slice(-relCount);
+    
+    // Promoted teams (top of Division 2)
+    const promoted = t2Teams.slice(0, promoCount);
+    
+    if (relegated.length === 0 && promoted.length === 0) {
+      showMsg('No teams to relegate or promote', 'warning');
+      return;
     }
-    await logAction('process_relegation', { league_id: genLeague, relegated: rel });
-    showMsg(`✅ ${rel} relegated, ${pro} promoted from Div 2`);
+    
+    if (!window.confirm(
+      `⚠️ Process Relegation & Promotion?\n\n` +
+      `📉 Relegate: ${relegated.length} teams from ${lg.name} to ${t2.name}\n` +
+      `📈 Promote: ${promoted.length} teams from ${t2.name} to ${lg.name}\n\n` +
+      `This cannot be undone!`
+    )) return;
+    
+    // Reset stats for moved teams
+    const reset = { 
+      total_points: 0, 
+      wins: 0, 
+      draws: 0, 
+      losses: 0, 
+      goals_for: 0, 
+      goals_against: 0, 
+      goal_difference: 0, 
+      matches_played: 0 
+    };
+    
+    // Process relegation: Move bottom teams to Division 2
+    let relegatedCount = 0;
+    for (const t of relegated) {
+      await rFetch('PATCH', `teams?id=eq.${t.id}`, { 
+        league_id: t2.id, 
+        ...reset 
+      }, { Prefer: 'return=minimal' });
+      relegatedCount++;
+    }
+    
+    // Process promotion: Move top teams from Division 2 to Division 1
+    let promotedCount = 0;
+    for (const t of promoted) {
+      await rFetch('PATCH', `teams?id=eq.${t.id}`, { 
+        league_id: genLeague, 
+        ...reset 
+      }, { Prefer: 'return=minimal' });
+      promotedCount++;
+    }
+    
+    await logAction('process_relegation_promotion', { 
+      league_id: genLeague, 
+      league_name: lg.name,
+      relegated: relegatedCount,
+      promoted: promotedCount,
+      division2: t2.name
+    });
+    
+    showMsg(`✅ ${relegatedCount} teams relegated to ${t2.name}, ${promotedCount} teams promoted to ${lg.name}`);
     loadAll();
   }
 
@@ -608,27 +680,28 @@ useEffect(() => {
   }
 
   async function adjustTeamPoints() {
-  if (!adjTeam) { showMsg('Select a team', 'danger'); return; }
-  
-  const change = parseInt(adjPts || 0);
-  if (change === 0) { showMsg('Enter a non-zero points change', 'danger'); return; }
-  
-  const r = await apiFetch('GET', `teams?id=eq.${adjTeam}&select=total_points`);
-  const cur = Array.isArray(r.data) && r.data[0] ? r.data[0].total_points || 0 : 0;
-  const np = Math.max(0, cur + change);
-  
-  const result = await rFetch('PATCH', `teams?id=eq.${adjTeam}`, { total_points: np }, { Prefer: 'return=minimal' });
-  
-  if (result.ok) {
-    showMsg(`✅ Team points ${change > 0 ? 'added' : 'deducted'}: ${cur} → ${np}`, change > 0 ? 'success' : 'danger');
-    await logAction('adjust_team_points', { team_id: adjTeam, change, reason: adjReason, before: cur, after: np });
-    setAdjPts(0);
-    setAdjReason('');
-    loadAll();
-  } else {
-    showMsg(`❌ Failed to update points: ${result.data?.message || 'Unknown error'}`, 'danger');
+    if (!adjTeam) { showMsg('Select a team', 'danger'); return; }
+    
+    const change = parseInt(adjPts || 0);
+    if (change === 0) { showMsg('Enter a non-zero points change', 'danger'); return; }
+    
+    const r = await apiFetch('GET', `teams?id=eq.${adjTeam}&select=total_points`);
+    const cur = Array.isArray(r.data) && r.data[0] ? r.data[0].total_points || 0 : 0;
+    const np = Math.max(0, cur + change);
+    
+    const result = await rFetch('PATCH', `teams?id=eq.${adjTeam}`, { total_points: np }, { Prefer: 'return=minimal' });
+    
+    if (result.ok) {
+      showMsg(`✅ Team points ${change > 0 ? 'added' : 'deducted'}: ${cur} → ${np}`, change > 0 ? 'success' : 'danger');
+      await logAction('adjust_team_points', { team_id: adjTeam, change, reason: adjReason, before: cur, after: np });
+      setAdjPts(0);
+      setAdjReason('');
+      loadAll();
+    } else {
+      showMsg(`❌ Failed to update points: ${result.data?.message || 'Unknown error'}`, 'danger');
+    }
   }
-}
+
   if (profile?.role !== 'admin') return (
     <div className="card empty-state"><div className="empty-icon">🔒</div>Admin access required</div>
   );
@@ -826,144 +899,143 @@ useEffect(() => {
           )}
 
           {/* PLAYER POINTS */}
-{section === 'playerpoints' && (
-  <div>
-    <div className="card" style={{ marginBottom: '1rem' }}>
-      <div style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '1rem', color: 'var(--yellow)' }}>
-        🎮 Add / Deduct Player Points (Free Play / Matchmaking)
-      </div>
-      <div className="alert alert-info" style={{ marginBottom: '1rem' }}>
-        These points affect the <strong>Match Search leaderboard</strong> — separate from league team points.
-      </div>
+          {section === 'playerpoints' && (
+            <div>
+              <div className="card" style={{ marginBottom: '1rem' }}>
+                <div style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '1rem', color: 'var(--yellow)' }}>
+                  🎮 Add / Deduct Player Points (Free Play / Matchmaking)
+                </div>
+                <div className="alert alert-info" style={{ marginBottom: '1rem' }}>
+                  These points affect the <strong>Match Search leaderboard</strong> — separate from league team points.
+                </div>
 
-      <div className="grid-2">
-        <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-          <label className="form-label">Search & Select Player</label>
-          <input className="form-input" placeholder="Type to search player..." value={ppSearch} onChange={e => setPpSearch(e.target.value)} style={{ marginBottom: 8 }} />
-          <select className="form-select" value={ppPlayer} onChange={e => setPpPlayer(e.target.value)} size={Math.min(6, uniqueFilteredLb.length + 1)} style={{ height: 'auto', minHeight: 44 }}>
-            <option value="">-- Select a player --</option>
-            {uniqueFilteredLb.map(r => (
-              <option key={r.user_id} value={r.user_id}>
-                {/* Show username instead of user_id */}
-                {r.users?.username || r.username || 'Unknown Player'} — {r.points || 0} pts ({r.wins || 0}W {r.draws || 0}D {r.losses || 0}L)
-              </option>
-            ))}
-          </select>
-        </div>
+                <div className="grid-2">
+                  <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                    <label className="form-label">Search & Select Player</label>
+                    <input className="form-input" placeholder="Type to search player..." value={ppSearch} onChange={e => setPpSearch(e.target.value)} style={{ marginBottom: 8 }} />
+                    <select className="form-select" value={ppPlayer} onChange={e => setPpPlayer(e.target.value)} size={Math.min(6, uniqueFilteredLb.length + 1)} style={{ height: 'auto', minHeight: 44 }}>
+                      <option value="">-- Select a player --</option>
+                      {uniqueFilteredLb.map(r => (
+                        <option key={r.user_id} value={r.user_id}>
+                          {r.users?.username || r.username || 'Unknown Player'} — {r.points || 0} pts ({r.wins || 0}W {r.draws || 0}D {r.losses || 0}L)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-        <div className="form-group">
-          <label className="form-label">Points Change</label>
-          <div style={{ display: 'flex', gap: 6 }}>
-            {[-10, -5, -3, -1].map(v => (
-              <button key={v} className="btn btn-danger btn-sm" onClick={() => setPpChange(v)} style={{ flex: 1 }}>{v}</button>
-            ))}
-          </div>
-          <input className="form-input" type="number" value={ppChange} onChange={e => setPpChange(e.target.value)} placeholder="+5 or -3" style={{ marginTop: 6 }} />
-          <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-            {[1, 3, 5, 10].map(v => (
-              <button key={v} className="btn btn-success btn-sm" onClick={() => setPpChange(v)} style={{ flex: 1 }}>+{v}</button>
-            ))}
-          </div>
-        </div>
-
-        <div className="form-group">
-          <label className="form-label">Reason (Required)</label>
-          <textarea className="form-input" value={ppReason} onChange={e => setPpReason(e.target.value)} placeholder="e.g. Disconnected, rule violation..." rows={4} />
-        </div>
-      </div>
-
-      {ppPlayer && ppChange !== 0 && (() => {
-        const row = leaderboard.find(r => r.user_id === ppPlayer);
-        const before = row?.points || 0;
-        const after = Math.max(0, before + parseInt(ppChange || 0));
-        const isAdd = parseInt(ppChange) > 0;
-        const playerName = row?.users?.username || row?.username || 'Player';
-        return (
-          <div className={`alert ${isAdd ? 'alert-success' : 'alert-danger'}`} style={{ marginBottom: '1rem' }}>
-            <strong>{playerName}</strong>: {before} pts → <strong>{after} pts</strong>
-            {' '}({isAdd ? '+' : ''}{ppChange}) {ppReason && `— "${ppReason}"`}
-          </div>
-        );
-      })()}
-
-      <button className="btn btn-primary" onClick={adjustPlayerPoints} style={{ minWidth: 200 }}>
-        ⚡ Apply Points Change
-      </button>
-    </div>
-
-    <div className="card" style={{ marginBottom: '1rem' }}>
-      <div style={{ fontWeight: 700, marginBottom: '1rem' }}>🏆 Current Leaderboard</div>
-      <div className="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              {['#', 'Player', 'MP', 'W', 'D', 'L', 'GF', 'GA', 'GD', 'Pts', 'Actions'].map(h => <th key={h}>{h}</th>)}
-            </tr>
-          </thead>
-          <tbody>
-            {leaderboard.length === 0 ?
-              <tr><td colSpan={11} style={{ textAlign: 'center', color: 'var(--muted)', padding: '2rem' }}>No players yet</td></tr> :
-              leaderboard.map((r, i) => (
-                <tr key={r.user_id} style={{ background: ppPlayer === r.user_id ? 'rgba(255,210,0,0.06)' : 'transparent' }}>
-                  <td className={`pos ${i === 0 ? 'pos-1' : i === 1 ? 'pos-2' : i === 2 ? 'pos-3' : ''}`}>{i + 1}</td>
-                  <td style={{ fontWeight: 600 }}>{r.users?.username || r.username || '—'}</td>
-                  <td>{r.matches_played || 0}</td>
-                  <td style={{ color: 'var(--green)' }}>{r.wins || 0}</td>
-                  <td style={{ color: 'var(--muted)' }}>{r.draws || 0}</td>
-                  <td style={{ color: 'var(--red)' }}>{r.losses || 0}</td>
-                  <td>{r.goals_for || 0}</td>
-                  <td>{r.goals_against || 0}</td>
-                  <td>{r.goal_difference || 0}</td>
-                  <td className="pts">{r.points || 0}</td>
-                  <td>
-                    <div style={{ display: 'flex', gap: 4 }}>
-                      <button className="btn btn-success btn-sm" onClick={() => { setPpPlayer(r.user_id); setPpChange(3); }}>+3</button>
-                      <button className="btn btn-danger btn-sm" onClick={() => { setPpPlayer(r.user_id); setPpChange(-3); }}>-3</button>
+                  <div className="form-group">
+                    <label className="form-label">Points Change</label>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      {[-10, -5, -3, -1].map(v => (
+                        <button key={v} className="btn btn-danger btn-sm" onClick={() => setPpChange(v)} style={{ flex: 1 }}>{v}</button>
+                      ))}
                     </div>
-                  </td>
-                </tr>
-              ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
+                    <input className="form-input" type="number" value={ppChange} onChange={e => setPpChange(e.target.value)} placeholder="+5 or -3" style={{ marginTop: 6 }} />
+                    <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                      {[1, 3, 5, 10].map(v => (
+                        <button key={v} className="btn btn-success btn-sm" onClick={() => setPpChange(v)} style={{ flex: 1 }}>+{v}</button>
+                      ))}
+                    </div>
+                  </div>
 
-    <div className="card">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: 8 }}>
-        <div style={{ fontWeight: 700 }}>📋 Points Adjustment History</div>
-        <button className="btn btn-secondary btn-sm" onClick={loadPointsHistory}>↻ Refresh</button>
-      </div>
-      {pointsHistory.length === 0 ?
-        <div style={{ textAlign: 'center', color: 'var(--muted)', padding: '1.5rem', fontSize: '.875rem' }}>No adjustments yet</div> :
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                {['Player', 'Change', 'Before', 'After', 'Reason', 'Admin', 'Date'].map(h => <th key={h}>{h}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {pointsHistory.map(h => (
-                <tr key={h.id}>
-                  <td style={{ fontWeight: 600 }}>{h.player?.username || h.player_id || '—'}</td>
-                  <td style={{ fontWeight: 700, color: h.change > 0 ? 'var(--green)' : 'var(--red)' }}>
-                    {h.change > 0 ? '+' : ''}{h.change}
-                  </td>
-                  <td>{h.points_before}</td>
-                  <td>{h.points_after}</td>
-                  <td>{h.reason || '—'}</td>
-                  <td>{h.admin?.username || '—'}</td>
-                  <td style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
-                    {new Date(h.created_at).toLocaleDateString()}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>}
-    </div>
-  </div>
-)}
+                  <div className="form-group">
+                    <label className="form-label">Reason (Required)</label>
+                    <textarea className="form-input" value={ppReason} onChange={e => setPpReason(e.target.value)} placeholder="e.g. Disconnected, rule violation..." rows={4} />
+                  </div>
+                </div>
+
+                {ppPlayer && ppChange !== 0 && (() => {
+                  const row = leaderboard.find(r => r.user_id === ppPlayer);
+                  const before = row?.points || 0;
+                  const after = Math.max(0, before + parseInt(ppChange || 0));
+                  const isAdd = parseInt(ppChange) > 0;
+                  const playerName = row?.users?.username || row?.username || 'Player';
+                  return (
+                    <div className={`alert ${isAdd ? 'alert-success' : 'alert-danger'}`} style={{ marginBottom: '1rem' }}>
+                      <strong>{playerName}</strong>: {before} pts → <strong>{after} pts</strong>
+                      {' '}({isAdd ? '+' : ''}{ppChange}) {ppReason && `— "${ppReason}"`}
+                    </div>
+                  );
+                })()}
+
+                <button className="btn btn-primary" onClick={adjustPlayerPoints} style={{ minWidth: 200 }}>
+                  ⚡ Apply Points Change
+                </button>
+              </div>
+
+              <div className="card" style={{ marginBottom: '1rem' }}>
+                <div style={{ fontWeight: 700, marginBottom: '1rem' }}>🏆 Current Leaderboard</div>
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        {['#', 'Player', 'MP', 'W', 'D', 'L', 'GF', 'GA', 'GD', 'Pts', 'Actions'].map(h => <th key={h}>{h}</th>)}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {leaderboard.length === 0 ?
+                        <tr><td colSpan={11} style={{ textAlign: 'center', color: 'var(--muted)', padding: '2rem' }}>No players yet</td></tr> :
+                        leaderboard.map((r, i) => (
+                          <tr key={r.user_id} style={{ background: ppPlayer === r.user_id ? 'rgba(255,210,0,0.06)' : 'transparent' }}>
+                            <td className={`pos ${i === 0 ? 'pos-1' : i === 1 ? 'pos-2' : i === 2 ? 'pos-3' : ''}`}>{i + 1}</td>
+                            <td style={{ fontWeight: 600 }}>{r.users?.username || r.username || '—'}</td>
+                            <td>{r.matches_played || 0}</td>
+                            <td style={{ color: 'var(--green)' }}>{r.wins || 0}</td>
+                            <td style={{ color: 'var(--muted)' }}>{r.draws || 0}</td>
+                            <td style={{ color: 'var(--red)' }}>{r.losses || 0}</td>
+                            <td>{r.goals_for || 0}</td>
+                            <td>{r.goals_against || 0}</td>
+                            <td>{r.goal_difference || 0}</td>
+                            <td className="pts">{r.points || 0}</td>
+                            <td>
+                              <div style={{ display: 'flex', gap: 4 }}>
+                                <button className="btn btn-success btn-sm" onClick={() => { setPpPlayer(r.user_id); setPpChange(3); }}>+3</button>
+                                <button className="btn btn-danger btn-sm" onClick={() => { setPpPlayer(r.user_id); setPpChange(-3); }}>-3</button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="card">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: 8 }}>
+                  <div style={{ fontWeight: 700 }}>📋 Points Adjustment History</div>
+                  <button className="btn btn-secondary btn-sm" onClick={loadPointsHistory}>↻ Refresh</button>
+                </div>
+                {pointsHistory.length === 0 ?
+                  <div style={{ textAlign: 'center', color: 'var(--muted)', padding: '1.5rem', fontSize: '.875rem' }}>No adjustments yet</div> :
+                  <div className="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          {['Player', 'Change', 'Before', 'After', 'Reason', 'Admin', 'Date'].map(h => <th key={h}>{h}</th>)}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pointsHistory.map(h => (
+                          <tr key={h.id}>
+                            <td style={{ fontWeight: 600 }}>{h.player?.username || h.player_id || '—'}</td>
+                            <td style={{ fontWeight: 700, color: h.change > 0 ? 'var(--green)' : 'var(--red)' }}>
+                              {h.change > 0 ? '+' : ''}{h.change}
+                            </td>
+                            <td>{h.points_before}</td>
+                            <td>{h.points_after}</td>
+                            <td>{h.reason || '—'}</td>
+                            <td>{h.admin?.username || '—'}</td>
+                            <td style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
+                              {new Date(h.created_at).toLocaleDateString()}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>}
+              </div>
+            </div>
+          )}
 
           {/* LEAGUES */}
           {section === 'leagues' && (
@@ -1060,174 +1132,167 @@ useEffect(() => {
           )}
 
           {/* FIXTURES */}
-{section === 'fixtures' && (
-  <div className="card">
-    <div style={{ fontWeight: 700, marginBottom: '1rem', fontSize: '1.1rem' }}>📅 Fixtures Manager</div>
-    
-    {/* Generate Fixtures */}
-    <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
-      <select 
-        className="form-select" 
-        value={genLeague} 
-        onChange={async (e) => {
-          setGenLeague(e.target.value);
-          if (e.target.value) {
-            const r = await apiFetch('GET', `fixtures?league_id=eq.${e.target.value}&select=*,home:home_team_id(name),away:away_team_id(name)&order=round`);
-            setFixtureList(Array.isArray(r.data) ? r.data : []);
-          } else {
-            setFixtureList([]);
-          }
-        }} 
-        style={{ minWidth: '200px' }}
-      >
-        <option value="">-- Select League --</option>
-        {leagues.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-      </select>
-      <button className="btn btn-primary" onClick={generateFixtures}>⚡ Generate Round Robin</button>
-    </div>
+          {section === 'fixtures' && (
+            <div className="card">
+              <div style={{ fontWeight: 700, marginBottom: '1rem', fontSize: '1.1rem' }}>📅 Fixtures Manager</div>
+              
+              {/* Generate Fixtures */}
+              <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+                <select 
+                  className="form-select" 
+                  value={genLeague} 
+                  onChange={async (e) => {
+                    setGenLeague(e.target.value);
+                    if (e.target.value) {
+                      const r = await apiFetch('GET', `fixtures?league_id=eq.${e.target.value}&select=*,home:home_team_id(name),away:away_team_id(name)&order=round`);
+                      setFixtureList(Array.isArray(r.data) ? r.data : []);
+                    } else {
+                      setFixtureList([]);
+                    }
+                  }} 
+                  style={{ minWidth: '200px' }}
+                >
+                  <option value="">-- Select League --</option>
+                  {leagues.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                </select>
+                <button className="btn btn-primary" onClick={generateFixtures}>⚡ Generate Round Robin</button>
+              </div>
 
-    {/* Schedule Fixtures */}
-    <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem', alignItems: 'center' }}>
-      <button 
-  className="btn btn-success"
-  onClick={async () => {
-    if (!genLeague) { 
-      showMsg('Select a league first', 'danger'); 
-      return; 
-    }
-    
-    try {
-      // Get all fixtures for this league
-      const r = await apiFetch('GET', `fixtures?league_id=eq.${genLeague}&select=*,home:home_team_id(name),away:away_team_id(name)&order=round`);
-      const fixtures = Array.isArray(r.data) ? r.data : [];
-      
-      if (fixtures.length === 0) {
-        showMsg('No fixtures found for this league', 'danger');
-        return;
-      }
-      
-      // Schedule each fixture
-      let startDate = new Date();
-      startDate.setDate(startDate.getDate() + 7); // Start 1 week from now
-      
-      let scheduled = 0;
-      let failed = 0;
-      
-      for (const fixture of fixtures) {
-        // Calculate date for this round (2 days between rounds)
-        const fixtureDate = new Date(startDate);
-        fixtureDate.setDate(startDate.getDate() + (fixture.round - 1) * 2);
-        
-        // Set time to 19:00 (7 PM)
-        fixtureDate.setHours(19, 0, 0, 0);
-        
-        const result = await rFetch('PATCH', `fixtures?id=eq.${fixture.id}`, {
-          scheduled_date: fixtureDate.toISOString()
-        }, { Prefer: 'return=minimal' });
-        
-        if (result.ok) {
-          scheduled++;
-        } else {
-          failed++;
-          console.error('Failed to schedule fixture:', fixture.id, result);
-        }
-      }
-      
-      showMsg(`✅ Scheduled ${scheduled} fixtures${failed > 0 ? `, ${failed} failed` : ''}`);
-      
-      // Refresh fixture list
-      const refresh = await apiFetch('GET', `fixtures?league_id=eq.${genLeague}&select=*,home:home_team_id(name),away:away_team_id(name)&order=round`);
-      setFixtureList(Array.isArray(refresh.data) ? refresh.data : []);
-      loadAll();
-      
-    } catch (error) {
-      console.error('Schedule error:', error);
-      showMsg('❌ Failed to schedule fixtures: ' + error.message, 'danger');
-    }
-  }}
->
-  📅 Auto-Schedule All (2 days apart)
-</button>
-      
-      <span style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>
-        {fixtureList.length} fixtures loaded
-      </span>
-    </div>
-
-    {/* Display Fixtures */}
-    <div className="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Round</th>
-            <th>Home</th>
-            <th>Away</th>
-            <th>Status</th>
-            <th>Scheduled Date</th>
-            <th>Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          {fixtureList.length === 0 ? (
-            <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--muted)', padding: '2rem' }}>No fixtures found. Generate fixtures first.</td></tr>
-          ) : (
-            fixtureList.map(f => (
-              <tr key={f.id}>
-                <td>Round {f.round}</td>
-                <td>{f.home?.name || '—'}</td>
-                <td>{f.away?.name || '—'}</td>
-                <td>
-                  <span className={`badge ${f.status === 'approved' ? 'badge-green' : f.status === 'pending_review' ? 'badge-warn' : 'badge-gray'}`}>
-                    {f.status || 'pending'}
-                  </span>
-                </td>
-                <td>
-                  {f.scheduled_date ? new Date(f.scheduled_date).toLocaleString() : 'Not scheduled'}
-                </td>
-                <td>
-                  <button 
-                    className="btn btn-sm btn-secondary"
-                    onClick={async () => {
-                      const date = prompt('Enter date (YYYY-MM-DD):', f.scheduled_date ? new Date(f.scheduled_date).toISOString().split('T')[0] : '');
-                      const time = prompt('Enter time (HH:MM):', '19:00');
-                      if (date && time) {
-                        const scheduledDate = new Date(`${date}T${time}:00`);
-                        await rFetch('PATCH', `fixtures?id=eq.${f.id}`, {
-                          scheduled_date: scheduledDate.toISOString()
+              {/* Schedule Fixtures */}
+              <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem', alignItems: 'center' }}>
+                <button 
+                  className="btn btn-success"
+                  onClick={async () => {
+                    if (!genLeague) { 
+                      showMsg('Select a league first', 'danger'); 
+                      return; 
+                    }
+                    
+                    try {
+                      const r = await apiFetch('GET', `fixtures?league_id=eq.${genLeague}&select=*,home:home_team_id(name),away:away_team_id(name)&order=round`);
+                      const fixtures = Array.isArray(r.data) ? r.data : [];
+                      
+                      if (fixtures.length === 0) {
+                        showMsg('No fixtures found for this league', 'danger');
+                        return;
+                      }
+                      
+                      let startDate = new Date();
+                      startDate.setDate(startDate.getDate() + 7);
+                      
+                      let scheduled = 0;
+                      let failed = 0;
+                      
+                      for (const fixture of fixtures) {
+                        const fixtureDate = new Date(startDate);
+                        fixtureDate.setDate(startDate.getDate() + (fixture.round - 1) * 2);
+                        fixtureDate.setHours(19, 0, 0, 0);
+                        
+                        const result = await rFetch('PATCH', `fixtures?id=eq.${fixture.id}`, {
+                          scheduled_date: fixtureDate.toISOString()
                         }, { Prefer: 'return=minimal' });
-                        showMsg(`✅ Fixture scheduled for ${date} ${time}`);
-                        // Refresh fixture list
-                        const refresh = await apiFetch('GET', `fixtures?league_id=eq.${genLeague}&select=*,home:home_team_id(name),away:away_team_id(name)&order=round`);
-                        setFixtureList(Array.isArray(refresh.data) ? refresh.data : []);
-                        loadAll();
+                        
+                        if (result.ok) {
+                          scheduled++;
+                        } else {
+                          failed++;
+                          console.error('Failed to schedule fixture:', fixture.id, result);
+                        }
                       }
-                    }}
-                  >
-                    📅 Schedule
-                  </button>
-                  <button 
-                    className="btn btn-sm btn-danger"
-                    onClick={async () => {
-                      if (window.confirm(`Delete this fixture?`)) {
-                        await rFetch('DELETE', `fixtures?id=eq.${f.id}`, null, { Prefer: 'return=minimal' });
-                        showMsg('🗑️ Fixture deleted');
-                        const refresh = await apiFetch('GET', `fixtures?league_id=eq.${genLeague}&select=*,home:home_team_id(name),away:away_team_id(name)&order=round`);
-                        setFixtureList(Array.isArray(refresh.data) ? refresh.data : []);
-                        loadAll();
-                      }
-                    }}
-                  >
-                    🗑️
-                  </button>
-                </td>
-              </tr>
-            ))
+                      
+                      showMsg(`✅ Scheduled ${scheduled} fixtures${failed > 0 ? `, ${failed} failed` : ''}`);
+                      
+                      const refresh = await apiFetch('GET', `fixtures?league_id=eq.${genLeague}&select=*,home:home_team_id(name),away:away_team_id(name)&order=round`);
+                      setFixtureList(Array.isArray(refresh.data) ? refresh.data : []);
+                      loadAll();
+                      
+                    } catch (error) {
+                      console.error('Schedule error:', error);
+                      showMsg('❌ Failed to schedule fixtures: ' + error.message, 'danger');
+                    }
+                  }}
+                >
+                  📅 Auto-Schedule All (2 days apart)
+                </button>
+                
+                <span style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>
+                  {fixtureList.length} fixtures loaded
+                </span>
+              </div>
+
+              {/* Display Fixtures */}
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Round</th>
+                      <th>Home</th>
+                      <th>Away</th>
+                      <th>Status</th>
+                      <th>Scheduled Date</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {fixtureList.length === 0 ? (
+                      <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--muted)', padding: '2rem' }}>No fixtures found. Generate fixtures first.</td></tr>
+                    ) : (
+                      fixtureList.map(f => (
+                        <tr key={f.id}>
+                          <td>Round {f.round}</td>
+                          <td>{f.home?.name || '—'}</td>
+                          <td>{f.away?.name || '—'}</td>
+                          <td>
+                            <span className={`badge ${f.status === 'approved' ? 'badge-green' : f.status === 'pending_review' ? 'badge-warn' : 'badge-gray'}`}>
+                              {f.status || 'pending'}
+                            </span>
+                          </td>
+                          <td>
+                            {f.scheduled_date ? new Date(f.scheduled_date).toLocaleString() : 'Not scheduled'}
+                          </td>
+                          <td>
+                            <button 
+                              className="btn btn-sm btn-secondary"
+                              onClick={async () => {
+                                const date = prompt('Enter date (YYYY-MM-DD):', f.scheduled_date ? new Date(f.scheduled_date).toISOString().split('T')[0] : '');
+                                const time = prompt('Enter time (HH:MM):', '19:00');
+                                if (date && time) {
+                                  const scheduledDate = new Date(`${date}T${time}:00`);
+                                  await rFetch('PATCH', `fixtures?id=eq.${f.id}`, {
+                                    scheduled_date: scheduledDate.toISOString()
+                                  }, { Prefer: 'return=minimal' });
+                                  showMsg(`✅ Fixture scheduled for ${date} ${time}`);
+                                  const refresh = await apiFetch('GET', `fixtures?league_id=eq.${genLeague}&select=*,home:home_team_id(name),away:away_team_id(name)&order=round`);
+                                  setFixtureList(Array.isArray(refresh.data) ? refresh.data : []);
+                                  loadAll();
+                                }
+                              }}
+                            >
+                              📅 Schedule
+                            </button>
+                            <button 
+                              className="btn btn-sm btn-danger"
+                              onClick={async () => {
+                                if (window.confirm(`Delete this fixture?`)) {
+                                  await rFetch('DELETE', `fixtures?id=eq.${f.id}`, null, { Prefer: 'return=minimal' });
+                                  showMsg('🗑️ Fixture deleted');
+                                  const refresh = await apiFetch('GET', `fixtures?league_id=eq.${genLeague}&select=*,home:home_team_id(name),away:away_team_id(name)&order=round`);
+                                  setFixtureList(Array.isArray(refresh.data) ? refresh.data : []);
+                                  loadAll();
+                                }
+                              }}
+                            >
+                              🗑️
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           )}
-        </tbody>
-      </table>
-    </div>
-  </div>
-)}
 
           {/* CUPS */}
           {section === 'cups' && (
@@ -1306,393 +1371,442 @@ useEffect(() => {
           )}
 
           {/* TEAM POINTS */}
-{section === 'points' && (
-  <div className="card">
-    <div style={{ fontWeight: 700, marginBottom: '1rem', fontSize: '1.1rem' }}>✏️ Adjust Team Points</div>
-    
-    {/* Search Teams */}
-    <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
-      <input 
-        className="form-input" 
-        placeholder="Search teams..." 
-        value={adjTeamSearch || ''} 
-        onChange={e => setAdjTeamSearch(e.target.value)}
-        style={{ minWidth: '200px', flex: 1 }}
-      />
-      <span style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>
-        {teams.filter(t => 
-          !adjTeamSearch || t.name.toLowerCase().includes(adjTeamSearch.toLowerCase())
-        ).length} teams found
-      </span>
-    </div>
+          {section === 'points' && (
+            <div className="card">
+              <div style={{ fontWeight: 700, marginBottom: '1rem', fontSize: '1.1rem' }}>✏️ Adjust Team Points</div>
+              
+              {/* Search Teams */}
+              <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                <input 
+                  className="form-input" 
+                  placeholder="Search teams..." 
+                  value={adjTeamSearch || ''} 
+                  onChange={e => setAdjTeamSearch(e.target.value)}
+                  style={{ minWidth: '200px', flex: 1 }}
+                />
+                <span style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>
+                  {teams.filter(t => 
+                    !adjTeamSearch || t.name.toLowerCase().includes(adjTeamSearch.toLowerCase())
+                  ).length} teams found
+                </span>
+              </div>
 
-    {/* Points Adjustment Form */}
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.5rem', marginBottom: '1rem' }}>
-      <select className="form-select" value={adjTeam} onChange={e => setAdjTeam(e.target.value)}>
-        <option value="">-- Select Team --</option>
-        {teams
-          .filter(t => !adjTeamSearch || t.name.toLowerCase().includes(adjTeamSearch.toLowerCase()))
-          .map(t => (
-            <option key={t.id} value={t.id}>
-              {t.name} ({t.total_points || 0} pts) - {leagues.find(l => l.id === t.league_id)?.name || 'No League'}
-            </option>
-          ))
-        }
-      </select>
-      
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-          {/* Quick deduction buttons */}
-          <button className="btn btn-danger btn-sm" onClick={() => setAdjPts(prev => prev - 1)} style={{ flex: 1 }}>-1</button>
-          <button className="btn btn-danger btn-sm" onClick={() => setAdjPts(prev => prev - 3)} style={{ flex: 1 }}>-3</button>
-          <button className="btn btn-danger btn-sm" onClick={() => setAdjPts(prev => prev - 5)} style={{ flex: 1 }}>-5</button>
-          <button className="btn btn-danger btn-sm" onClick={() => setAdjPts(prev => prev - 10)} style={{ flex: 1 }}>-10</button>
-        </div>
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-          <input 
-            className="form-input" 
-            type="number" 
-            placeholder="+3 or -2" 
-            value={adjPts === 0 ? '' : adjPts}
-            onChange={e => setAdjPts(e.target.value === '' ? 0 : parseInt(e.target.value) || 0)} 
-            style={{ flex: 1 }}
-          />
-          <button 
-            className="btn btn-secondary btn-sm" 
-            onClick={() => { setAdjPts(0); setAdjReason(''); }}
-            title="Clear"
-          >
-            ✕
-          </button>
-        </div>
-        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-          {/* Quick addition buttons */}
-          <button className="btn btn-success btn-sm" onClick={() => setAdjPts(prev => prev + 1)} style={{ flex: 1 }}>+1</button>
-          <button className="btn btn-success btn-sm" onClick={() => setAdjPts(prev => prev + 3)} style={{ flex: 1 }}>+3</button>
-          <button className="btn btn-success btn-sm" onClick={() => setAdjPts(prev => prev + 5)} style={{ flex: 1 }}>+5</button>
-          <button className="btn btn-success btn-sm" onClick={() => setAdjPts(prev => prev + 10)} style={{ flex: 1 }}>+10</button>
-        </div>
-      </div>
-      
-      <input 
-        className="form-input" 
-        placeholder="Reason (e.g. Deduction for violation)" 
-        value={adjReason} 
-        onChange={e => setAdjReason(e.target.value)} 
-      />
-    </div>
-    
-    {/* Show current points and preview */}
-    {adjTeam && adjPts !== 0 && (() => {
-      const team = teams.find(t => t.id === adjTeam);
-      const current = team?.total_points || 0;
-      const newTotal = Math.max(0, current + parseInt(adjPts));
-      const isAdd = parseInt(adjPts) > 0;
-      return (
-        <div className={`alert ${isAdd ? 'alert-success' : 'alert-danger'}`} style={{ marginBottom: '1rem' }}>
-          <strong>{team?.name}</strong>: {current} pts → <strong>{newTotal} pts</strong>
-          {' '}({isAdd ? '+' : ''}{adjPts}) {adjReason && `— "${adjReason}"`}
-        </div>
-      );
-    })()}
-    
-    <button className="btn btn-primary" onClick={adjustTeamPoints}>✏️ Apply Points Adjustment</button>
-  </div>
-)}
-          {/* RELEGATION */}
+              {/* Points Adjustment Form */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.5rem', marginBottom: '1rem' }}>
+                <select className="form-select" value={adjTeam} onChange={e => setAdjTeam(e.target.value)}>
+                  <option value="">-- Select Team --</option>
+                  {teams
+                    .filter(t => !adjTeamSearch || t.name.toLowerCase().includes(adjTeamSearch.toLowerCase()))
+                    .map(t => (
+                      <option key={t.id} value={t.id}>
+                        {t.name} ({t.total_points || 0} pts) - {leagues.find(l => l.id === t.league_id)?.name || 'No League'}
+                      </option>
+                    ))
+                  }
+                </select>
+                
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    <button className="btn btn-danger btn-sm" onClick={() => setAdjPts(prev => prev - 1)} style={{ flex: 1 }}>-1</button>
+                    <button className="btn btn-danger btn-sm" onClick={() => setAdjPts(prev => prev - 3)} style={{ flex: 1 }}>-3</button>
+                    <button className="btn btn-danger btn-sm" onClick={() => setAdjPts(prev => prev - 5)} style={{ flex: 1 }}>-5</button>
+                    <button className="btn btn-danger btn-sm" onClick={() => setAdjPts(prev => prev - 10)} style={{ flex: 1 }}>-10</button>
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <input 
+                      className="form-input" 
+                      type="number" 
+                      placeholder="+3 or -2" 
+                      value={adjPts === 0 ? '' : adjPts}
+                      onChange={e => setAdjPts(e.target.value === '' ? 0 : parseInt(e.target.value) || 0)} 
+                      style={{ flex: 1 }}
+                    />
+                    <button 
+                      className="btn btn-secondary btn-sm" 
+                      onClick={() => { setAdjPts(0); setAdjReason(''); }}
+                      title="Clear"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    <button className="btn btn-success btn-sm" onClick={() => setAdjPts(prev => prev + 1)} style={{ flex: 1 }}>+1</button>
+                    <button className="btn btn-success btn-sm" onClick={() => setAdjPts(prev => prev + 3)} style={{ flex: 1 }}>+3</button>
+                    <button className="btn btn-success btn-sm" onClick={() => setAdjPts(prev => prev + 5)} style={{ flex: 1 }}>+5</button>
+                    <button className="btn btn-success btn-sm" onClick={() => setAdjPts(prev => prev + 10)} style={{ flex: 1 }}>+10</button>
+                  </div>
+                </div>
+                
+                <input 
+                  className="form-input" 
+                  placeholder="Reason (e.g. Deduction for violation)" 
+                  value={adjReason} 
+                  onChange={e => setAdjReason(e.target.value)} 
+                />
+              </div>
+              
+              {/* Show current points and preview */}
+              {adjTeam && adjPts !== 0 && (() => {
+                const team = teams.find(t => t.id === adjTeam);
+                const current = team?.total_points || 0;
+                const newTotal = Math.max(0, current + parseInt(adjPts));
+                const isAdd = parseInt(adjPts) > 0;
+                return (
+                  <div className={`alert ${isAdd ? 'alert-success' : 'alert-danger'}`} style={{ marginBottom: '1rem' }}>
+                    <strong>{team?.name}</strong>: {current} pts → <strong>{newTotal} pts</strong>
+                    {' '}({isAdd ? '+' : ''}{adjPts}) {adjReason && `— "${adjReason}"`}
+                  </div>
+                );
+              })()}
+              
+              <button className="btn btn-primary" onClick={adjustTeamPoints}>✏️ Apply Points Adjustment</button>
+            </div>
+          )}
+
+          {/* RELEGATION - Updated with Promotion */}
           {section === 'relegation' && (
             <div className="card">
               <div style={{ fontWeight: 700, marginBottom: '1rem', fontSize: '1.1rem' }}>📊 Relegation / Promotion</div>
-              <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+              
+              <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem', alignItems: 'center' }}>
                 <select className="form-select" value={genLeague} onChange={e => setGenLeague(e.target.value)} style={{ minWidth: '200px' }}>
                   <option value="">-- Select League --</option>
                   {leagues.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
                 </select>
-                <button className="btn btn-danger" onClick={processRelegation}>⚡ Process Relegation</button>
+                
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <label style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>⬇️ Relegate:</label>
+                  <input 
+                    className="form-input" 
+                    type="number" 
+                    value={relSpots} 
+                    onChange={e => setRelSpots(parseInt(e.target.value) || 3)}
+                    style={{ width: '60px', padding: '4px 8px' }}
+                    min={1}
+                    max={10}
+                  />
+                </div>
+                
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <label style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>⬆️ Promote:</label>
+                  <input 
+                    className="form-input" 
+                    type="number" 
+                    value={promoSpots} 
+                    onChange={e => setPromoSpots(parseInt(e.target.value) || 3)}
+                    style={{ width: '60px', padding: '4px 8px' }}
+                    min={1}
+                    max={10}
+                  />
+                </div>
+                
+                <button className="btn btn-danger" onClick={processRelegation}>⚡ Process Relegation & Promotion</button>
               </div>
+              
               <div className="alert alert-warning">⚠️ This action cannot be undone. Make sure the season is complete.</div>
+              
+              {/* Preview */}
+              {genLeague && (
+                <div style={{ marginTop: '1rem' }}>
+                  <div style={{ fontWeight: 600, marginBottom: '0.5rem', fontSize: '0.9rem' }}>📋 Preview</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                    <div className="card" style={{ padding: '0.75rem', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
+                      <div style={{ color: 'var(--red)', fontWeight: 700, fontSize: '0.85rem' }}>⬇️ Relegation ({relSpots} teams)</div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>
+                        Bottom {relSpots} teams will be relegated to Division 2
+                      </div>
+                    </div>
+                    <div className="card" style={{ padding: '0.75rem', background: 'rgba(34, 197, 94, 0.1)', border: '1px solid rgba(34, 197, 94, 0.3)' }}>
+                      <div style={{ color: 'var(--green)', fontWeight: 700, fontSize: '0.85rem' }}>⬆️ Promotion ({promoSpots} teams)</div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>
+                        Top {promoSpots} teams from Division 2 will be promoted
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
           {/* USERS */}
-{section === 'users' && (
-  <div className="card">
-    <div style={{ fontWeight: 700, marginBottom: '1rem', fontSize: '1.1rem' }}>👥 System Users Management</div>
-    
-    {/* Stats Bar */}
-    <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
-      <span className="badge badge-blue">Total Users: {users.length}</span>
-      <span className="badge badge-green">With Teams: {users.filter(u => teams.some(t => t.user_id === u.id)).length}</span>
-      <span className="badge badge-red">Without Teams: {users.filter(u => !teams.some(t => t.user_id === u.id)).length}</span>
-    </div>
-
-    {/* Bulk Actions */}
-    <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
-      <button 
-        className="btn btn-primary"
-        onClick={async () => {
-          if (!window.confirm('Create teams for ALL users who don\'t have one?')) return;
-          let created = 0;
-          for (const user of users) {
-            const hasTeam = teams.some(t => t.user_id === user.id);
-            if (!hasTeam) {
-              const teamName = `${user.username || 'Player'}'s Team`;
-              const result = await rFetch('POST', 'teams', {
-                name: teamName,
-                user_id: user.id,
-                league_id: user.league_id || null,
-                is_active: true,
-                total_points: 0,
-                wins: 0,
-                draws: 0,
-                losses: 0,
-                matches_played: 0,
-                goals_for: 0,
-                goals_against: 0,
-                goal_difference: 0
-              }, { Prefer: 'return=minimal' });
-              if (result.ok) created++;
-            }
-          }
-          showMsg(`✅ Created ${created} teams for users`);
-          loadAll();
-        }}
-      >
-        ➕ Create Teams for All Users
-      </button>
-      
-      <button 
-        className="btn btn-warning"
-        onClick={async () => {
-          if (!window.confirm('Sync all team leagues to match user leagues?')) return;
-          let updated = 0;
-          for (const user of users) {
-            const userTeam = teams.find(t => t.user_id === user.id);
-            if (userTeam && userTeam.league_id !== user.league_id) {
-              await rFetch('PATCH', `teams?id=eq.${userTeam.id}`, { league_id: user.league_id || null }, { Prefer: 'return=minimal' });
-              updated++;
-            }
-          }
-          showMsg(`✅ Synced ${updated} teams to match user leagues`);
-          loadAll();
-        }}
-      >
-        🔄 Sync Team Leagues
-      </button>
-      
-      <button 
-        className="btn btn-danger"
-        onClick={async () => {
-          if (!window.confirm('⚠️ Remove ALL users from ALL leagues?')) return;
-          await rFetch('PATCH', 'profiles', { league_id: null }, { Prefer: 'return=minimal' });
-          await rFetch('PATCH', 'users', { league_id: null }, { Prefer: 'return=minimal' });
-          await rFetch('PATCH', 'teams', { league_id: null }, { Prefer: 'return=minimal' });
-          showMsg('🔄 All users and teams removed from all leagues');
-          loadAll();
-        }}
-      >
-        🔄 Reset All
-      </button>
-    </div>
-
-    {/* Search */}
-    <input 
-      className="form-input" 
-      placeholder="Search users by name or email..." 
-      value={userSearch} 
-      onChange={e => setUserSearch(e.target.value)} 
-      style={{ marginBottom: '1rem' }}
-    />
-
-    {/* Users Table */}
-    <div className="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Username</th>
-            <th>Email</th>
-            <th>WhatsApp</th>
-            <th>Role</th>
-            <th>League</th>
-            <th>Team</th>
-            <th>Status</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {filteredUsers.length === 0 ? (
-            <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--muted)', padding: '2rem' }}>No users found</td></tr>
-          ) : (
-            filteredUsers.map(u => {
-              const currentLeague = leagues.find(l => l.id === u.league_id);
-              const userTeam = teams.find(t => t.user_id === u.id);
+          {section === 'users' && (
+            <div className="card">
+              <div style={{ fontWeight: 700, marginBottom: '1rem', fontSize: '1.1rem' }}>👥 System Users Management</div>
               
-              return (
-                <tr key={u.id}>
-                  <td style={{ fontWeight: 600 }}>{u.username || '—'}</td>
-                  <td>{u.email || '—'}</td>
-                  <td>{u.phone || u.phone_number || '—'}</td>
-                  
-                  {/* Role */}
-                  <td>
-                    <select 
-                      className="form-select" 
-                      value={u.role || 'user'} 
-                      onChange={e => setRole(u.id, e.target.value)}
-                      style={{ padding: '4px', minHeight: 'auto', fontSize: '0.85rem', width: '100%' }}
-                    >
-                      <option value="user">User</option>
-                      <option value="admin">Admin</option>
-                    </select>
-                  </td>
-                  
-                  {/* League Assignment */}
-                  <td>
-                    <select 
-                      className="form-select" 
-                      value={u.league_id || ''} 
-                      onChange={async (e) => {
-                        const newLeagueId = e.target.value || null;
-                        const targetLeague = leagues.find(l => l.id === newLeagueId);
-                        
-                        if (newLeagueId) {
-                          const currentCount = users.filter(user => user.league_id === newLeagueId).length;
-                          if (targetLeague && currentCount >= (targetLeague.max_slots || 16)) {
-                            showMsg(`❌ ${targetLeague.name} is full (${currentCount}/${targetLeague.max_slots || 16})`, 'danger');
-                            return;
-                          }
-                        }
-                        
-                        await rFetch('PATCH', `profiles?id=eq.${u.id}`, { league_id: newLeagueId }, { Prefer: 'return=minimal' });
-                        await rFetch('PATCH', `users?id=eq.${u.id}`, { league_id: newLeagueId }, { Prefer: 'return=minimal' });
-                        
-                        const userTeam = teams.find(t => t.user_id === u.id);
-                        if (userTeam) {
-                          await rFetch('PATCH', `teams?id=eq.${userTeam.id}`, { league_id: newLeagueId }, { Prefer: 'return=minimal' });
-                        } else if (newLeagueId) {
-                          const teamName = `${u.username || 'Player'}'s Team`;
-                          await rFetch('POST', 'teams', {
-                            name: teamName,
-                            user_id: u.id,
-                            league_id: newLeagueId,
-                            is_active: true,
-                            total_points: 0,
-                            wins: 0,
-                            draws: 0,
-                            losses: 0,
-                            matches_played: 0,
-                            goals_for: 0,
-                            goals_against: 0,
-                            goal_difference: 0
-                          }, { Prefer: 'return=minimal' });
-                        }
-                        
-                        showMsg(`✅ ${u.username} assigned to ${targetLeague?.name || 'No League'}`);
-                        loadAll();
-                      }}
-                      style={{ padding: '4px', minHeight: 'auto', fontSize: '0.85rem', width: '100%' }}
-                    >
-                      <option value="">-- No League --</option>
-                      {leagues.map(l => {
-                        const count = users.filter(user => user.league_id === l.id).length;
-                        const isFull = count >= (l.max_slots || 16);
-                        return (
-                          <option key={l.id} value={l.id} disabled={isFull && u.league_id !== l.id}>
-                            {l.name} ({count}/{l.max_slots || 16}) {isFull && u.league_id !== l.id ? '🔴' : ''}
-                          </option>
-                        );
-                      })}
-                    </select>
-                  </td>
-                  
-                  {/* Team */}
-                  <td>
-                    {userTeam ? (
-                      <span className="badge badge-green" style={{ fontSize: '0.75rem' }}>{userTeam.name}</span>
+              {/* Stats Bar */}
+              <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+                <span className="badge badge-blue">Total Users: {users.length}</span>
+                <span className="badge badge-green">With Teams: {users.filter(u => teams.some(t => t.user_id === u.id)).length}</span>
+                <span className="badge badge-red">Without Teams: {users.filter(u => !teams.some(t => t.user_id === u.id)).length}</span>
+              </div>
+
+              {/* Bulk Actions */}
+              <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                <button 
+                  className="btn btn-primary"
+                  onClick={async () => {
+                    if (!window.confirm('Create teams for ALL users who don\'t have one?')) return;
+                    let created = 0;
+                    for (const user of users) {
+                      const hasTeam = teams.some(t => t.user_id === user.id);
+                      if (!hasTeam) {
+                        const teamName = `${user.username || 'Player'}'s Team`;
+                        const result = await rFetch('POST', 'teams', {
+                          name: teamName,
+                          user_id: user.id,
+                          league_id: user.league_id || null,
+                          is_active: true,
+                          total_points: 0,
+                          wins: 0,
+                          draws: 0,
+                          losses: 0,
+                          matches_played: 0,
+                          goals_for: 0,
+                          goals_against: 0,
+                          goal_difference: 0
+                        }, { Prefer: 'return=minimal' });
+                        if (result.ok) created++;
+                      }
+                    }
+                    showMsg(`✅ Created ${created} teams for users`);
+                    loadAll();
+                  }}
+                >
+                  ➕ Create Teams for All Users
+                </button>
+                
+                <button 
+                  className="btn btn-warning"
+                  onClick={async () => {
+                    if (!window.confirm('Sync all team leagues to match user leagues?')) return;
+                    let updated = 0;
+                    for (const user of users) {
+                      const userTeam = teams.find(t => t.user_id === user.id);
+                      if (userTeam && userTeam.league_id !== user.league_id) {
+                        await rFetch('PATCH', `teams?id=eq.${userTeam.id}`, { league_id: user.league_id || null }, { Prefer: 'return=minimal' });
+                        updated++;
+                      }
+                    }
+                    showMsg(`✅ Synced ${updated} teams to match user leagues`);
+                    loadAll();
+                  }}
+                >
+                  🔄 Sync Team Leagues
+                </button>
+                
+                <button 
+                  className="btn btn-danger"
+                  onClick={async () => {
+                    if (!window.confirm('⚠️ Remove ALL users from ALL leagues?')) return;
+                    await rFetch('PATCH', 'profiles', { league_id: null }, { Prefer: 'return=minimal' });
+                    await rFetch('PATCH', 'users', { league_id: null }, { Prefer: 'return=minimal' });
+                    await rFetch('PATCH', 'teams', { league_id: null }, { Prefer: 'return=minimal' });
+                    showMsg('🔄 All users and teams removed from all leagues');
+                    loadAll();
+                  }}
+                >
+                  🔄 Reset All
+                </button>
+              </div>
+
+              {/* Search */}
+              <input 
+                className="form-input" 
+                placeholder="Search users by name or email..." 
+                value={userSearch} 
+                onChange={e => setUserSearch(e.target.value)} 
+                style={{ marginBottom: '1rem' }}
+              />
+
+              {/* Users Table */}
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Username</th>
+                      <th>Email</th>
+                      <th>WhatsApp</th>
+                      <th>Role</th>
+                      <th>League</th>
+                      <th>Team</th>
+                      <th>Status</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredUsers.length === 0 ? (
+                      <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--muted)', padding: '2rem' }}>No users found</td></tr>
                     ) : (
-                      <span className="badge badge-red" style={{ fontSize: '0.75rem' }}>No Team</span>
+                      filteredUsers.map(u => {
+                        const currentLeague = leagues.find(l => l.id === u.league_id);
+                        const userTeam = teams.find(t => t.user_id === u.id);
+                        
+                        return (
+                          <tr key={u.id}>
+                            <td style={{ fontWeight: 600 }}>{u.username || '—'}</td>
+                            <td>{u.email || '—'}</td>
+                            <td>{u.phone || u.phone_number || '—'}</td>
+                            
+                            {/* Role */}
+                            <td>
+                              <select 
+                                className="form-select" 
+                                value={u.role || 'user'} 
+                                onChange={e => setRole(u.id, e.target.value)}
+                                style={{ padding: '4px', minHeight: 'auto', fontSize: '0.85rem', width: '100%' }}
+                              >
+                                <option value="user">User</option>
+                                <option value="admin">Admin</option>
+                              </select>
+                            </td>
+                            
+                            {/* League Assignment */}
+                            <td>
+                              <select 
+                                className="form-select" 
+                                value={u.league_id || ''} 
+                                onChange={async (e) => {
+                                  const newLeagueId = e.target.value || null;
+                                  const targetLeague = leagues.find(l => l.id === newLeagueId);
+                                  
+                                  if (newLeagueId) {
+                                    const currentCount = users.filter(user => user.league_id === newLeagueId).length;
+                                    if (targetLeague && currentCount >= (targetLeague.max_slots || 16)) {
+                                      showMsg(`❌ ${targetLeague.name} is full (${currentCount}/${targetLeague.max_slots || 16})`, 'danger');
+                                      return;
+                                    }
+                                  }
+                                  
+                                  await rFetch('PATCH', `profiles?id=eq.${u.id}`, { league_id: newLeagueId }, { Prefer: 'return=minimal' });
+                                  await rFetch('PATCH', `users?id=eq.${u.id}`, { league_id: newLeagueId }, { Prefer: 'return=minimal' });
+                                  
+                                  const userTeam = teams.find(t => t.user_id === u.id);
+                                  if (userTeam) {
+                                    await rFetch('PATCH', `teams?id=eq.${userTeam.id}`, { league_id: newLeagueId }, { Prefer: 'return=minimal' });
+                                  } else if (newLeagueId) {
+                                    const teamName = `${u.username || 'Player'}'s Team`;
+                                    await rFetch('POST', 'teams', {
+                                      name: teamName,
+                                      user_id: u.id,
+                                      league_id: newLeagueId,
+                                      is_active: true,
+                                      total_points: 0,
+                                      wins: 0,
+                                      draws: 0,
+                                      losses: 0,
+                                      matches_played: 0,
+                                      goals_for: 0,
+                                      goals_against: 0,
+                                      goal_difference: 0
+                                    }, { Prefer: 'return=minimal' });
+                                  }
+                                  
+                                  showMsg(`✅ ${u.username} assigned to ${targetLeague?.name || 'No League'}`);
+                                  loadAll();
+                                }}
+                                style={{ padding: '4px', minHeight: 'auto', fontSize: '0.85rem', width: '100%' }}
+                              >
+                                <option value="">-- No League --</option>
+                                {leagues.map(l => {
+                                  const count = users.filter(user => user.league_id === l.id).length;
+                                  const isFull = count >= (l.max_slots || 16);
+                                  return (
+                                    <option key={l.id} value={l.id} disabled={isFull && u.league_id !== l.id}>
+                                      {l.name} ({count}/{l.max_slots || 16}) {isFull && u.league_id !== l.id ? '🔴' : ''}
+                                    </option>
+                                  );
+                                })}
+                              </select>
+                            </td>
+                            
+                            {/* Team */}
+                            <td>
+                              {userTeam ? (
+                                <span className="badge badge-green" style={{ fontSize: '0.75rem' }}>{userTeam.name}</span>
+                              ) : (
+                                <span className="badge badge-red" style={{ fontSize: '0.75rem' }}>No Team</span>
+                              )}
+                            </td>
+                            
+                            {/* Status */}
+                            <td>
+                              <span className={`badge ${u.is_blocked ? 'badge-red' : 'badge-green'}`}>
+                                {u.is_blocked ? 'Blocked' : 'Active'}
+                              </span>
+                            </td>
+                            
+                            {/* Actions */}
+                            <td>
+                              <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                                <button 
+                                  className={`btn btn-sm ${u.is_blocked ? 'btn-success' : 'btn-danger'}`}
+                                  onClick={() => blockUser(u.id, !u.is_blocked)}
+                                  title={u.is_blocked ? 'Unblock' : 'Block'}
+                                >
+                                  {u.is_blocked ? '🔓' : '🚫'}
+                                </button>
+                                
+                                {!userTeam && (
+                                  <button 
+                                    className="btn btn-sm btn-primary"
+                                    onClick={async () => {
+                                      const teamName = prompt(`Enter team name for ${u.username}:`, `${u.username || 'Player'}'s Team`);
+                                      if (teamName) {
+                                        const result = await rFetch('POST', 'teams', {
+                                          name: teamName,
+                                          user_id: u.id,
+                                          league_id: u.league_id || null,
+                                          is_active: true,
+                                          total_points: 0,
+                                          wins: 0,
+                                          draws: 0,
+                                          losses: 0,
+                                          matches_played: 0,
+                                          goals_for: 0,
+                                          goals_against: 0,
+                                          goal_difference: 0
+                                        }, { Prefer: 'return=minimal' });
+                                        if (result.ok) {
+                                          showMsg(`✅ Team "${teamName}" created for ${u.username}`);
+                                          loadAll();
+                                        } else {
+                                          showMsg(`❌ Failed to create team: ${result.data?.message || 'Unknown error'}`, 'danger');
+                                        }
+                                      }
+                                    }}
+                                    title="Create Team"
+                                  >
+                                    ➕
+                                  </button>
+                                )}
+                                
+                                {userTeam && (
+                                  <button 
+                                    className="btn btn-sm btn-secondary"
+                                    onClick={async () => {
+                                      const newName = prompt(`Enter new team name for ${u.username}:`, userTeam.name);
+                                      if (newName && newName !== userTeam.name) {
+                                        await rFetch('PATCH', `teams?id=eq.${userTeam.id}`, { name: newName }, { Prefer: 'return=minimal' });
+                                        showMsg(`✅ Team renamed to "${newName}"`);
+                                        loadAll();
+                                      }
+                                    }}
+                                    title="Edit Team Name"
+                                  >
+                                    ✏️
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
                     )}
-                  </td>
-                  
-                  {/* Status */}
-                  <td>
-                    <span className={`badge ${u.is_blocked ? 'badge-red' : 'badge-green'}`}>
-                      {u.is_blocked ? 'Blocked' : 'Active'}
-                    </span>
-                  </td>
-                  
-                  {/* Actions */}
-                  <td>
-                    <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                      <button 
-                        className={`btn btn-sm ${u.is_blocked ? 'btn-success' : 'btn-danger'}`}
-                        onClick={() => blockUser(u.id, !u.is_blocked)}
-                        title={u.is_blocked ? 'Unblock' : 'Block'}
-                      >
-                        {u.is_blocked ? '🔓' : '🚫'}
-                      </button>
-                      
-                      {!userTeam && (
-                        <button 
-                          className="btn btn-sm btn-primary"
-                          onClick={async () => {
-                            const teamName = prompt(`Enter team name for ${u.username}:`, `${u.username || 'Player'}'s Team`);
-                            if (teamName) {
-                              const result = await rFetch('POST', 'teams', {
-                                name: teamName,
-                                user_id: u.id,
-                                league_id: u.league_id || null,
-                                is_active: true,
-                                total_points: 0,
-                                wins: 0,
-                                draws: 0,
-                                losses: 0,
-                                matches_played: 0,
-                                goals_for: 0,
-                                goals_against: 0,
-                                goal_difference: 0
-                              }, { Prefer: 'return=minimal' });
-                              if (result.ok) {
-          showMsg(`✅ Team "${teamName}" created for ${u.username}`);
-          loadAll();
-        } else {
-          showMsg(`❌ Failed to create team: ${result.data?.message || 'Unknown error'}`, 'danger');
-        }
-      }
-    }}
-    title="Create Team"
-  >
-    ➕
-  </button>
-)}
-                      
-                      {userTeam && (
-                        <button 
-                          className="btn btn-sm btn-secondary"
-                          onClick={async () => {
-                            const newName = prompt(`Enter new team name for ${u.username}:`, userTeam.name);
-                            if (newName && newName !== userTeam.name) {
-                              await rFetch('PATCH', `teams?id=eq.${userTeam.id}`, { name: newName }, { Prefer: 'return=minimal' });
-                              showMsg(`✅ Team renamed to "${newName}"`);
-                              loadAll();
-                            }
-                          }}
-                          title="Edit Team Name"
-                        >
-                          ✏️
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              );
-            })
+                  </tbody>
+                </table>
+              </div>
+            </div>
           )}
-        </tbody>
-      </table>
-    </div>
-  </div>
-)}
 
           {/* LOGS */}
           {section === 'logs' && (
