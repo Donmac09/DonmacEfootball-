@@ -57,6 +57,19 @@ export default function AdminPage({ user, profile }) {
   const [ppSearch, setPpSearch] = useState('');
   const [seasonFilter, setSeasonFilter] = useState('');
 
+  // Load saved section on page load
+useEffect(() => {
+  const savedSection = localStorage.getItem('adminSection');
+  if (savedSection) {
+    setSection(savedSection);
+  }
+}, []);
+
+// Save section when it changes
+useEffect(() => {
+  localStorage.setItem('adminSection', section);
+}, [section]);
+
   const REAL_LEAGUE_SLOTS = {
     'English Premier League': { slots: 20, season: '2024-25' },
     'La Liga': { slots: 20, season: '2024-25' },
