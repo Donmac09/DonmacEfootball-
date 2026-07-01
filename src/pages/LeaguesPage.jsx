@@ -9,6 +9,19 @@ export default function LeaguesPage() {
   const [tab, setTab]             = useState('standings');
   const [loading, setLoading]     = useState(true);
 
+  // Load saved tab on mount
+  useEffect(() => {
+    const savedTab = localStorage.getItem('leaguesTab');
+    if (savedTab) {
+      setTab(savedTab);
+    }
+  }, []);
+
+  // Save tab when it changes
+  useEffect(() => {
+    localStorage.setItem('leaguesTab', tab);
+  }, [tab]);
+
   useEffect(() => {
     apiFetch('GET','leagues?select=*&order=country').then(r => {
       const data = Array.isArray(r.data) ? r.data : [];
@@ -124,7 +137,15 @@ export default function LeaguesPage() {
             </div>
 
             <div className="tabs">
-              {['standings','fixtures'].map(t => <button key={t} className={`tab ${tab===t?'active':''}`} onClick={() => setTab(t)}>{t.charAt(0).toUpperCase()+t.slice(1)}</button>)}
+              {['standings','fixtures'].map(t => (
+                <button 
+                  key={t} 
+                  className={`tab ${tab===t?'active':''}`} 
+                  onClick={() => setTab(t)}
+                >
+                  {t.charAt(0).toUpperCase()+t.slice(1)}
+                </button>
+              ))}
             </div>
 
             {tab === 'standings' && (
