@@ -53,6 +53,22 @@ export default function MatchSearchPage({ user, profile }) {
   const matchingRef = useRef(false);
   const pollRef     = useRef(null);
 
+  // ====== LOCAL STORAGE FOR TAB (if you add tabs later) ======
+  // If you add tabs to this page, uncomment these:
+  // const [tab, setTab] = useState('matches');
+  // 
+  // useEffect(() => {
+  //   const savedTab = localStorage.getItem('matchSearchTab');
+  //   if (savedTab) {
+  //     setTab(savedTab);
+  //   }
+  // }, []);
+  // 
+  // useEffect(() => {
+  //   localStorage.setItem('matchSearchTab', tab);
+  // }, [tab]);
+  // ============================================================
+
   async function getToken() {
     const { data } = await sb.auth.getSession();
     return data?.session?.access_token ?? SUPABASE_KEY;
