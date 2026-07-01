@@ -910,6 +910,17 @@ tr:hover td {
   height: 56px;
 }
 
+/* Show on mobile only */
+@media (max-width: 768px) {
+  .mobile-header {
+    display: flex;
+  }
+  
+  /* Add padding to body to account for fixed header */
+  body {
+    padding-top: 56px;
+  }
+}
 .hamburger-btn {
   background: none;
   border: none;
@@ -1726,4 +1737,33 @@ tr:hover td {
   .announcement-banner { padding: 4px 8px; gap: 6px; }
   .announcement-icon { font-size: 0.9rem; }
   .announcement-message { font-size: 0.7rem; }
+}
+/* Ensure main content doesn't hide behind fixed header */
+.main {
+  padding-top: 56px; /* Height of mobile header */
+}
+
+/* For desktop, remove the padding */
+@media (min-width: 769px) {
+  .main {
+    padding-top: 0;
+  }
+}
+
+/* Announcement container with top margin to account for fixed header */
+.announcement-wrapper {
+  padding: 8px 16px;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 56px; /* Height of mobile header */
+  position: relative;
+  z-index: 50;
+  background: transparent;
+}
+
+/* On desktop, remove the margin */
+@media (min-width: 769px) {
+  .announcement-wrapper {
+    margin-top: 0;
+  }
 }
