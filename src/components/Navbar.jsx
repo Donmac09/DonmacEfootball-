@@ -84,7 +84,7 @@ export default function Navbar({ page, setPage }) {
 
   return (
     <>
-      {/* ── MOBILE HEADER WITH HAMBURGER ─────────────────────────── */}
+      {/* ── MOBILE HEADER ─────────────────────────────────────────── */}
       <div className="mobile-header">
         <button
           className="hamburger-btn"
@@ -200,10 +200,16 @@ export default function Navbar({ page, setPage }) {
         </div>
       </nav>
 
-      {/* ── ANNOUNCEMENT BANNER (BELOW HEADER - COMPACT) ──────────── */}
-<div style={{ padding: '0 16px', width: '100%', boxSizing: 'border-box' }}>
-  <AnnouncementBanner />
-</div>
+      {/* ── ANNOUNCEMENT BANNER (BELOW HEADER) ────────────────────── */}
+      <div style={{ 
+        padding: '8px 16px', 
+        width: '100%', 
+        boxSizing: 'border-box',
+        position: 'relative',
+        zIndex: 50,
+      }}>
+        <AnnouncementBanner />
+      </div>
 
       {/* ── NOTIFICATIONS PANEL ───────────────────────────────────── */}
       {showNotifs && (
