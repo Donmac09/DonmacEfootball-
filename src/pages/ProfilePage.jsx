@@ -12,6 +12,22 @@ export default function ProfilePage({ user, profile, onProfileUpdate }) {
   const [msg, setMsg]           = useState('');
   const [team, setTeam]         = useState(null);
 
+  // ====== LOCAL STORAGE FOR TAB (if you add tabs later) ======
+  // If you add tabs to this page, uncomment these:
+  // const [tab, setTab] = useState('profile');
+  // 
+  // useEffect(() => {
+  //   const savedTab = localStorage.getItem('profileTab');
+  //   if (savedTab) {
+  //     setTab(savedTab);
+  //   }
+  // }, []);
+  // 
+  // useEffect(() => {
+  //   localStorage.setItem('profileTab', tab);
+  // }, [tab]);
+  // ============================================================
+
   useEffect(() => {
     if (profile) {
       setUsername(profile.username || '');
