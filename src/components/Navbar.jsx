@@ -10,7 +10,29 @@ export default function Navbar({ page, setPage }) {
   const [notifs, setNotifs] = useState([]);
   const [menuOpen, setMenuOpen] = useState(false);
 
-  // All nav items
+  // ====== LOCAL STORAGE PERSISTENCE FOR SIDEBAR ======
+  useEffect(() => {
+    const savedMenuState = localStorage.getItem('sidebarOpen');
+    if (savedMenuState === 'true') {
+      setMenuOpen(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('sidebarOpen', String(menuOpen));
+  }, [menuOpen]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth >= 768 && menuOpen) {
+        setMenuOpen(false);
+        localStorage.setItem('sidebarOpen', 'false');
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [menuOpen]);
+
   const navItems = [
     ['home', '🏠', 'Home'],
     ['leagues', '🏟️', 'Leagues'],
@@ -66,7 +88,10 @@ export default function Navbar({ page, setPage }) {
       <div className="mobile-header">
         <button
           className="hamburger-btn"
-          onClick={() => setMenuOpen(true)}
+          onClick={() => {
+            setMenuOpen(true);
+            localStorage.setItem('sidebarOpen', 'true');
+          }}
           aria-label="Open menu"
         >
           ☰
@@ -96,7 +121,10 @@ export default function Navbar({ page, setPage }) {
 
       {/* ── SIDEBAR MENU ──────────────────────────────────────────── */}
       {menuOpen && (
-        <div className="nav-overlay" onClick={() => setMenuOpen(false)} />
+        <div className="nav-overlay" onClick={() => {
+          setMenuOpen(false);
+          localStorage.setItem('sidebarOpen', 'false');
+        }} />
       )}
       <div className={`navbar-sidebar ${menuOpen ? 'open' : ''}`}>
         <div className="sidebar-header">
@@ -105,7 +133,10 @@ export default function Navbar({ page, setPage }) {
           </div>
           <button
             className="close-btn"
-            onClick={() => setMenuOpen(false)}
+            onClick={() => {
+              setMenuOpen(false);
+              localStorage.setItem('sidebarOpen', 'false');
+            }}
             aria-label="Close menu"
           >
             ✕
@@ -116,7 +147,11 @@ export default function Navbar({ page, setPage }) {
             <button
               key={id}
               className={`sidebar-link ${page === id ? 'active' : ''}`}
-              onClick={() => { setPage(id); setMenuOpen(false); }}
+              onClick={() => {
+                setPage(id);
+                setMenuOpen(false);
+                localStorage.setItem('sidebarOpen', 'false');
+              }}
             >
               {icon} {label}
             </button>
@@ -165,9 +200,10 @@ export default function Navbar({ page, setPage }) {
         </div>
       </nav>
 
-      {/* ── ANNOUNCEMENT BANNER ───────────────────────────────────── */}
-      {/* Shows announcements to all users (including non-logged in) */}
-      <AnnouncementBanner />
+      {/* ── ANNOUNCEMENT BANNER (BELOW HEADER - COMPACT) ──────────── */}
+      <div style={{ padding: '0 16px' }}>
+        <AnnouncementBanner />
+      </div>
 
       {/* ── NOTIFICATIONS PANEL ───────────────────────────────────── */}
       {showNotifs && (
