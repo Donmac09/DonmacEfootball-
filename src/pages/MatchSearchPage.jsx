@@ -4,9 +4,11 @@ import { apiFetch, SUPABASE_URL, SUPABASE_KEY, sb } from '../services/supabase';
 
 function Leaderboard() {
   const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
   
   useEffect(() => {
-    apiFetch('GET','free_play_leaderboard?select=*,users!inner(username)&order=points.desc&limit=20').then(r => {
+    // Get ALL users with their points (including those with 0 points)
+    apiFetch('GET', 'free_play_leaderboard?select=*,users!inner(username)&order=points.desc').then(r => {
       const data = Array.isArray(r.data) ? r.data : [];
       const seen = new Set();
       const deduped = data.filter(item => {
@@ -15,8 +17,11 @@ function Leaderboard() {
         return true;
       });
       setRows(deduped);
+      setLoading(false);
     });
   }, []);
+  
+  if (loading) return <div className="loading-center"><div className="spinner" /></div>;
   
   return (
     <div className="table-wrap">
