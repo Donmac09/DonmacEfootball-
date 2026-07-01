@@ -1,6 +1,6 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import React, { useState, useEffect, useRef } from 'react';
-import { apiFetch, SUPABASE_URL, SUPABASE_KEY, sessionStore } from '../services/supabase';
+import { apiFetch, SUPABASE_URL, SUPABASE_KEY, sessionStore, sb } from '../services/supabase';
 
 export default function ChatPage({ user }) {
   const [contacts, setContacts] = useState([]);
@@ -38,7 +38,7 @@ export default function ChatPage({ user }) {
     loadContacts();
 
     // Subscribe to new messages
-    const subscription = supabase
+    const subscription = sb
       .channel('chat-messages')
       .on(
         'postgres_changes',
@@ -66,7 +66,7 @@ export default function ChatPage({ user }) {
       .subscribe();
 
     // Also listen for messages sent by the user (to update other user's chat)
-    const subscription2 = supabase
+    const subscription2 = sb
       .channel('chat-messages-sent')
       .on(
         'postgres_changes',
