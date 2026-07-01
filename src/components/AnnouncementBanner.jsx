@@ -9,11 +9,10 @@ export default function AnnouncementBanner() {
   useEffect(() => {
     const loadAnnouncements = async () => {
       try {
-        const r = await apiFetch('GET', 'announcements?select=*&order=created_at.desc&limit=3');
+        const r = await apiFetch('GET', 'announcements?select=*&order=created_at.desc&limit=5');
         const data = Array.isArray(r.data) ? r.data : [];
         setAnnouncements(data);
         
-        // Structured console logging for debugging
         if (data.length > 0) {
           console.groupCollapsed('📢 [Announcements] Loaded successfully');
           console.log('📊 Count:', data.length);
@@ -21,9 +20,7 @@ export default function AnnouncementBanner() {
           console.groupEnd();
         }
       } catch (err) {
-        console.groupCollapsed('❌ [Announcements] Error loading');
-        console.error('Error:', err);
-        console.groupEnd();
+        console.error('Error loading announcements:', err);
       }
     };
     loadAnnouncements();
@@ -32,6 +29,9 @@ export default function AnnouncementBanner() {
   // Don't show if no announcements or user dismissed
   if (announcements.length === 0 || dismissed) return null;
 
+  // Get the latest announcement only
+  const latest = announcements[0];
+
   return (
     <div className="announcement-banner">
       <div className="announcement-icon">📢</div>
@@ -39,13 +39,16 @@ export default function AnnouncementBanner() {
       <div className="announcement-content">
         <div className="announcement-label">📣 Announcement</div>
         <div className="announcement-message">
-          {announcements[0]?.message}
+          {latest.message.split('\n').map((line, index) => (
+            <React.Fragment key={index}>
+              {line}
+              {index < latest.message.split('\n').length - 1 && <br />}
+            </React.Fragment>
+          ))}
         </div>
-        {announcements.length > 1 && (
-          <div className="announcement-count">
-            +{announcements.length - 1} more announcement{announcements.length > 2 ? 's' : ''}
-          </div>
-        )}
+        <div className="announcement-date">
+          {new Date(latest.created_at).toLocaleDateString()} at {new Date(latest.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+        </div>
       </div>
 
       <button
