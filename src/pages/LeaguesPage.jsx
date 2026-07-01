@@ -8,6 +8,7 @@ export default function LeaguesPage() {
   const [fixtures, setFixtures]   = useState([]);
   const [tab, setTab]             = useState('standings');
   const [loading, setLoading]     = useState(true);
+  const [allTeams, setAllTeams]   = useState([]); // Store all teams
 
   // Load saved tab on mount
   useEffect(() => {
@@ -31,14 +32,25 @@ export default function LeaguesPage() {
     });
   }, []);
 
+  // Load ALL teams once
+  useEffect(() => {
+    apiFetch('GET', 'teams?select=id,league_id,name,total_points,wins,draws,losses,matches_played,goals_for,goals_against,goal_difference&order=total_points.desc').then(r => {
+      const data = Array.isArray(r.data) ? r.data : [];
+      setAllTeams(data);
+    });
+  }, []);
+
   useEffect(() => {
     if (!selected) return;
-    apiFetch('GET',`teams?league_id=eq.${selected.id}&select=*&order=total_points.desc`).then(r => setStandings(Array.isArray(r.data) ? r.data : []));
+    // Filter standings from allTeams instead of fetching again
+    const filteredStandings = allTeams.filter(t => t.league_id === selected.id);
+    setStandings(filteredStandings);
+    
     apiFetch('GET',`fixtures?league_id=eq.${selected.id}&select=*,home:home_team_id(name),away:away_team_id(name)&order=round`).then(r => {
       console.log('📅 Fixtures loaded:', r.data);
       setFixtures(Array.isArray(r.data) ? r.data : []);
     });
-  }, [selected]);
+  }, [selected, allTeams]);
 
   function zoneClass(i, total) {
     const rel = total - (selected?.relegation_spots || 3);
@@ -70,7 +82,8 @@ export default function LeaguesPage() {
             {tier1.length > 0 && <>
               <div style={{ fontSize: '.72rem', color: 'var(--muted)', padding: '4px 8px', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 4 }}>Division 1</div>
               {tier1.map(l => {
-                const teamCount = standings.filter(t => t.league_id === l.id).length;
+                // Use allTeams to count teams for each league
+                const teamCount = allTeams.filter(t => t.league_id === l.id).length;
                 const maxSlots = l.max_slots || 16;
                 return (
                   <div key={l.id} onClick={() => setSelected(l)} style={{ 
@@ -94,7 +107,7 @@ export default function LeaguesPage() {
             {tier2.length > 0 && <>
               <div style={{ fontSize: '.72rem', color: 'var(--muted)', padding: '4px 8px', textTransform: 'uppercase', letterSpacing: '.05em', margin: '8px 0 4px' }}>Division 2</div>
               {tier2.map(l => {
-                const teamCount = standings.filter(t => t.league_id === l.id).length;
+                const teamCount = allTeams.filter(t => t.league_id === l.id).length;
                 const maxSlots = l.max_slots || 16;
                 return (
                   <div key={l.id} onClick={() => setSelected(l)} style={{ 
